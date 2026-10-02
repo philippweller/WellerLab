@@ -1,0 +1,387 @@
+"""PCA Well widget - chemometrics PCA with outlier diagnostics for Orange3.
+
+Features vs. the stock OW PCA:
+- preprocessing: none / center / pareto / autoscale (unit variance)
+- component selection: fixed count OR variance-fraction threshold
+- explained variance (%) shown on the score-plot axes
+- scores plot with class colour + point size by Q residual
+- Hotelling T2 / Q-residual plot with 95% control limits
+- "Remove outliers" refits the model on the inliers and re-emits everything
+
+Plotting uses pyqtgraph directly (as in the Spectroscopy add-on).
+"""
+
+import numpy as np
+import pyqtgraph as pg
+
+from AnyQt.QtCore import Qt
+from Orange.data import Table, Domain, ContinuousVariable, StringVariable
+from Orange.data.util import get_unique_names
+from Orange.widgets import gui, widget
+from Orange.widgets.settings import Setting
+from Orange.widgets.utils.annotated_data import add_columns
+from Orange.widgets.widget import Input, Output
+
+from .. import pca_analysis as pa
+
+# discrete-class colour palette (RGB tuples for pyqtgraph symbolBrush)
+_CLASS_COLORS = [
+    (0x1f, 0x77, 0xb4),  # blue
+    (0xff, 0x7f, 0x0e),  # orange
+    (0x2c, 0xa0, 0x2c),  # green
+    (0xd6, 0x27, 0x28),  # red
+    (0x94, 0x67, 0xbd),  # purple
+    (0x8c, 0x56, 0x4b),  # brown
+    (0xe3, 0x77, 0xc2),  # pink
+    (0x7f, 0x7f, 0x7f),  # grey
+    (0xbc, 0xbd, 0x22),  # olive
+    (0x17, 0xbe, 0xcf),  # teal
+]
+
+
+def _class_color(i):
+    return _CLASS_COLORS[i % len(_CLASS_COLORS)]
+
+
+class OWPCAWell(widget.OWWidget):
+    name = "PCA Well"
+    description = ("Chemometrics PCA with scaling, explained variance on axes "
+                   "and Hotelling T2/Q-residual outlier diagnostics.")
+    icon = "icons/PCAWell.svg"
+    priority = 3120
+    keywords = "pca, t2, hotelling, q residual, outlier, chemometrics, autoscale"
+
+    class Inputs:
+        data = Input("Data", Table)
+
+    class Outputs:
+        transformed_data = Output("Transformed Data", Table)
+        data = Output("Data", Table, default=True)
+        components = Output("Components (loadings)", Table)
+        scores = Output("Scores", Table)
+        outliers = Output("Outliers", Table)
+        inliers = Output("Inliers", Table)
+
+    # settings
+    scale = Setting("auto")
+    comp_method = Setting("frac")          # 'frac' | 'count'
+    n_components = Setting(2)              # used when comp_method == 'count'
+    variance_frac = Setting(0.80)          # used when comp_method == 'frac'
+    alpha = Setting(0.05)
+    use_T2 = Setting(True)
+    use_Q = Setting(True)
+    auto_commit = Setting(True)
+    point_size = Setting(6)
+    color_by_class = Setting(True)
+    size_by_Q = Setting(True)
+
+    graph_name = "scores_plot"
+
+    def __init__(self):
+        super().__init__()
+        self.data = None
+        self.analytics = None          # pa.PCAOutliers
+        self._scores = None
+        self._loadings = None
+
+        # --- control area: preprocessing -------------------------------
+        box = gui.widgetBox(self.controlArea, "Preprocessing")
+        gui.comboBox(
+            box, self, "scale", items=("auto", "pareto", "center", "none"),
+            label="Scaling:", callback=self._param_changed,
+            orientation=Qt.Horizontal)
+        gui.checkBox(box, self, "color_by_class", "Colour scores by class",
+                     callback=self._replot, attribute=Qt.WA_LayoutUsesWidgetRect)
+        gui.checkBox(box, self, "size_by_Q", "Size points by Q residual",
+                     callback=self._replot, attribute=Qt.WA_LayoutUsesWidgetRect)
+
+        # --- components ------------------------------------------------
+        cbox = gui.widgetBox(self.controlArea, "Components")
+        gui.comboBox(
+            cbox, self, "comp_method",
+            items=("Explained variance fraction", "Fixed number"),
+            label="Method:", callback=self._param_changed,
+            orientation=Qt.Horizontal)
+        self.frac_spin = gui.doubleSpin(
+            cbox, self, "variance_frac", 0.05, 1.0, 0.05,
+            label="Variance:", callback=self._param_changed, decimals=2)
+        self.count_spin = gui.spin(
+            cbox, self, "n_components", 1, 100,
+            label="Components:", callback=self._param_changed)
+        gui.hSlider(cbox, self, "point_size", label="Point size:",
+                    minValue=2, maxValue=16, callback=self._replot)
+
+        # --- outlier diagnostics ---------------------------------------
+        obox = gui.widgetBox(self.controlArea, "Outlier diagnostics")
+        gui.doubleSpin(obox, self, "alpha", 0.001, 0.50, 0.005,
+                       label="Significance (alpha):", callback=self._recalc_limits,
+                       decimals=3)
+        gui.checkBox(obox, self, "use_T2", "Use Hotelling T2 limit",
+                     callback=self._recalc_limits, attribute=Qt.WA_LayoutUsesWidgetRect)
+        gui.checkBox(obox, self, "use_Q", "Use Q-residual limit",
+                     callback=self._recalc_limits, attribute=Qt.WA_LayoutUsesWidgetRect)
+        b = gui.button(obox, self, "Remove outliers & refit",
+                       callback=self._remove_outliers)
+        b.setEnabled(False)
+        self._remove_button = b
+
+        gui.rubber(self.controlArea)
+        gui.auto_apply(self.buttonsArea, self, "auto_commit")
+
+        # --- main area: two plots --------------------------------------
+        self.scores_plot = pg.PlotWidget(background="w")
+        self.scores_plot.setLabel("bottom", "PC1")
+        self.scores_plot.setLabel("left", "PC2")
+        self.t2q_plot = pg.PlotWidget(background="w")
+        self.t2q_plot.setLabel("bottom", "Hotelling T2")
+        self.t2q_plot.setLabel("left", "Q residual")
+
+        tbox = gui.vBox(self.mainArea, "Scores")
+        tbox.layout().addWidget(self.scores_plot)
+        qbox = gui.vBox(self.mainArea, "T2 vs Q residual")
+        qbox.layout().addWidget(self.t2q_plot)
+
+        self._recalc_enabled_controls()
+
+    # ------------------------------------------------------------------ signals
+    @Inputs.data
+    def set_data(self, data):
+        self.data = data
+        self.clear_messages()
+        if data is None or not len(data):
+            self.analytics = None
+            self._scores = self._loadings = None
+            self._clear_outputs()
+            return
+        self.Error.clear()
+        if not data.domain.attributes:
+            self.Error.no_features()
+            self._clear_outputs()
+            return
+        self._fit()
+
+    # ------------------------------------------------------------------ fitting
+    def _param_changed(self):
+        self._recalc_enabled_controls()
+        self._fit()
+
+    def _recalc_enabled_controls(self):
+        is_count = self.comp_method == "count"
+        for spin, enable in ((self.count_spin, is_count),
+                             (self.frac_spin, not is_count)):
+            try:
+                spin.setEnabled(enable)
+            except Exception:
+                pass
+
+    def _resolved_n(self):
+        if self.comp_method == "count":
+            return int(self.n_components)
+        return float(self.variance_frac)
+
+    def _fit(self):
+        if self.data is None:
+            return
+        X = self.data.X.copy()
+        try:
+            self.analytics = pa.PCAOutliers(
+                X, scale=self.scale, n_components=self._resolved_n(),
+                alpha=self.alpha)
+        except Exception as exc:  # pragma: no cover
+            self.Error.fit_failed(str(exc))
+            self.analytics = None
+            self._scores = self._loadings = None
+            self._remove_button.setEnabled(False)
+            self._clear_outputs()
+            return
+        self.Error.clear()
+        r = self.analytics.result
+        self._scores = r["scores"]
+        self._loadings = r["loadings"]
+        self._remove_button.setEnabled(True)
+        self._replot()
+        self._replot_t2q()
+        self.commit.now() if self.auto_commit else self.commit.deferred()
+
+    def _recalc_limits(self):
+        if self.analytics is None:
+            return
+        self.analytics.update_stats()
+        self._replot_t2q()
+        if self.auto_commit:
+            self.commit.now()
+        else:
+            self.commit.deferred()
+
+    def _replot(self):
+        self._render_scores()
+
+    def _replot_t2q(self):
+        self._render_t2q()
+
+    def _remove_outliers(self):
+        if self.analytics is None:
+            return
+        mask = self.analytics.inlier_mask(use_T2=self.use_T2, use_Q=self.use_Q)
+        keep = self.data[mask]
+        if len(keep) == len(self.data):
+            self.information("No outliers beyond the limits; nothing removed.")
+            return
+        n_removed = int((~mask).sum())
+        self.data = keep
+        self._fit()
+        self.information(f"Removed {n_removed} outlier(s); model refit on {len(keep)} samples.")
+
+    # ------------------------------------------------------------------ rendering
+    def _variance_label(self, k):
+        """Percent explained variance for component k (1-indexed season)."""
+        r = self.analytics.result
+        ratio = r["explained_variance_ratio"]
+        if k <= len(ratio):
+            return f"PC{k} ({100 * ratio[k - 1]:.1f}%)"
+        return f"PC{k}"
+
+    def _render_scores(self):
+        self.scores_plot.clear()
+        r = self.analytics.result
+        s = self._scores
+        if s is None or s.shape[1] < 1:
+            return
+        self.scores_plot.setLabel("bottom", self._variance_label(1))
+        self.scores_plot.setLabel("left", self._variance_label(2))
+        x = s[:, 0]
+        y = s[:, 1] if s.shape[1] > 1 else np.zeros_like(x)
+        size = self.point_size
+        if self.size_by_Q:
+            q = self.analytics.Q
+            qn = (q - q.min()) / (q.max() - q.min() + 1e-12)
+            size = 3 + 13 * qn
+        colors = None
+        if self.color_by_class and self.data.domain.has_discrete_class:
+            yv = self.data.Y.astype(int)
+            classes = self.data.domain.class_var.values
+            n = len(classes)
+            for i, cname in enumerate(classes):
+                m = yv == i
+                if m.any():
+                    self.scores_plot.plot(x[m], y[m], pen=None,
+                                          symbol="o", symbolSize=size[m],
+                                          symbolBrush=_class_color(i))
+        else:
+            self.scores_plot.plot(x, y, pen=None, symbol="o",
+                                  symbolSize=size, symbolBrush=(0, 0, 0))
+
+    def _render_t2q(self):
+        self.t2q_plot.clear()
+        if self.analytics is None:
+            return
+        T2 = self.analytics.T2
+        Q = self.analytics.Q
+        t2l = self.analytics.T2_lim
+        ql = self.analytics.Q_lim
+        self.t2q_plot.plot(T2, Q, pen=None, symbol="o", symbolSize=self.point_size)
+        # control limits
+        if np.isfinite(t2l):
+            self.t2q_plot.plot([t2l, t2l], [0, Q.max() + Q.std() + 1e-9],
+                               pen=pg.mkPen("r", width=2))
+        if np.isfinite(ql):
+            self.t2q_plot.plot([0, T2.max() + T2.std() + 1e-9], [ql, ql],
+                               pen=pg.mkPen("r", width=2))
+
+    # ------------------------------------------------------------------ outputs
+    @gui.deferred
+    def commit(self):
+        transformed = data = components = scores = outliers = inliers = None
+        if self.analytics is not None and self.data is not None:
+            r = self.analytics.result
+            c = r["n_components"]
+            ratio = r["explained_variance_ratio"][:c]
+
+            # transformed data (first c components), with variance attributes
+            dom_attr = [ContinuousVariable(f"PC{i + 1}") for i in range(c)]
+            for var, expl in zip(dom_attr, ratio):
+                var.attributes["variance"] = round(float(expl), 6)
+            src_metas = self.data.domain.metas if self.data.domain.metas else []
+            transformed = Table(
+                Domain(dom_attr, self.data.domain.class_vars, src_metas),
+                self._scores[:, :c],
+                self.data.Y if self.data.domain.has_discrete_class else None,
+                metas=self.data.metas if src_metas else None)
+
+            # components (loadings): rows = components (c), cols = features (p)
+            proposed = [a.name for a in self.data.domain.attributes]
+            comp_dom = Domain(
+                [ContinuousVariable(name) for name in proposed],
+                metas=[StringVariable("component")])
+            comp_meta = np.array([[f"PC{i + 1}"] for i in range(c)], dtype=object)
+            components = Table(comp_dom, self._loadings[:, :c].T, metas=comp_meta)
+            components.name = "components"
+
+            # scores as a stand-alone table (with T2 & Q metas)
+            T2 = self.analytics.T2[:, None]
+            Q = self.analytics.Q[:, None]
+            q_name = get_unique_names(proposed, "Q_residual")
+            t2_name = get_unique_names(proposed, "T2")
+            meta_vars = [ContinuousVariable(t2_name), ContinuousVariable(q_name)]
+            metas = np.hstack([T2, Q])
+            scores = Table(
+                Domain(dom_attr, self.data.domain.class_vars, meta_vars),
+                self._scores[:, :c],
+                self.data.Y if self.data.domain.has_discrete_class else None,
+                metas=metas)
+            scores.name = "scores"
+
+            # full data table with T2/Q columns appended (as metas)
+            add = [ContinuousVariable(t2_name), ContinuousVariable(q_name)]
+            new_dom = add_columns(self.data.domain, metas=add)
+            data = self.data.transform(new_dom)
+            with data.unlocked(data.metas):
+                data.metas[:, -2] = T2.ravel()
+                data.metas[:, -1] = Q.ravel()
+
+            # inlier / outlier subsets
+            mask = self.analytics.inlier_mask(use_T2=self.use_T2, use_Q=self.use_Q)
+            inliers = self.data[mask]
+            outliers = self.data[~mask]
+            if len(outliers) == 0:
+                outliers = None
+
+        self.Outputs.transformed_data.send(transformed)
+        self.Outputs.data.send(data)
+        self.Outputs.components.send(components)
+        self.Outputs.scores.send(scores)
+        self.Outputs.outliers.send(outliers)
+        self.Outputs.inliers.send(inliers)
+
+    def _clear_outputs(self):
+        for name in ("transformed_data", "data", "components",
+                     "scores", "outliers", "inliers"):
+            getattr(self.Outputs, name).send(None)
+
+    # ------------------------------------------------------------------ error reporting
+    class Error(widget.OWWidget.Error):
+        no_features = widget.Msg("At least one feature is required.")
+        fit_failed = widget.Msg("PCA fit failed: {}")
+
+    class Warning(widget.OWWidget.Warning):
+        trivial = widget.Msg("All components are trivial (constant data).")
+
+    def send_report(self):
+        if self.data is None or self.analytics is None:
+            return
+        r = self.analytics.result
+        self.report_items((
+            ("Preprocessing", self.scale),
+            ("Components", r["n_components"]),
+            ("Explained variance", f"{100 * r['cumulative'][-1]:.1f}%"),
+            ("T2 limit", f"{self.analytics.T2_lim:.3f}"),
+            ("Q limit", f"{self.analytics.Q_lim:.3f}"),
+        ))
+        self.report_plot(self.scores_plot)
+        self.report_plot(self.t2q_plot)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    from Orange.widgets.utils.widgetpreview import WidgetPreview
+    from Orange.data import Table
+    WidgetPreview(OWPCAWell).run(Table("iris"))

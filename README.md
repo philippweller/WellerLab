@@ -14,6 +14,7 @@ aus diesem Repo.
 |---|---|---|---|
 | `orange-plsda-addon/` | `orangeplsda` | **PLS-DA** | PLS-DA + OPLS-DA-Klassifikation (inkl. S-Plot) |
 | `orange-nmr-addon/` | `oranjenmr` | **NMR Preprocessing** | NMR-Binning, -Normalisierung, -Baseline, -Filter, Regionen, Alignment |
+| `orange-pca-addon/` | `orangepca` | **PCA Well** | Chemometrie-PCA: Scaling, Varianz % an Achsen, Hotelling-T2/Q-Ausreißer-Diagnostik + Filter |
 
 Neue Tools kommen als eigener Unterordner mit eigenem `setup.py` dazu (Muster siehe
 `orange-plsda-addon/`). Danach einen Eintrag in `ADDONS` in `orange-install.py` ergänzen.
@@ -30,6 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/philippweller/WellerLab/main/orange
 # Dann ein Tool installieren:
 python3 orange-install.py plsda      # PLS-DA + OPLS-DA
 python3 orange-install.py nmr        # NMR Preprocessing
+python3 orange-install.py pca        # PCA Well (chemometrics PCA + T2/Q)
 
 # sonst:
 python3 orange-install.py --show     # findet Oranges Python, installiert nicht
