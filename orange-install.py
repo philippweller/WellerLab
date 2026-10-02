@@ -13,9 +13,12 @@ Usage
     python orange-install.py                 # install PLS-DA (default)
     python orange-install.py nmr             # install NMR add-on
     python orange-install.py <name>          # any addon listed in ADDONS
+    python orange-install.py all             # install the ENTIRE WellerLab suite
+    python orange-install.py --all           # same as 'all'
     python orange-install.py --python PATH   # force a specific python
     python orange-install.py --show          # just locate Orange's python, no install
     python orange-install.py --check plsda   # verify an existing install
+    python orange-install.py --check all     # verify every tool in the suite
 
 Runs with ANY python (stdlib only). Install details are printed step by step.
 """
@@ -145,40 +148,32 @@ def show_location(exe, pkg):
         return False
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Install an Orange3 add-on from the WellerLab monorepo")
-    ap.add_argument("addon", nargs="?", default="plsda",
-                    help="addon key (default: plsda)")
-    ap.add_argument("--python", default=None, help="explicit Orange python path")
-    ap.add_argument("--show", action="store_true", help="only locate Orange python, no install")
-    ap.add_argument("--check", action="store_true", help="verify install location and exit")
-    args = ap.parse_args()
+def suite_items():
+    """Ordered list of unique tools (subdir, pkg, category), deduped by subdir.
 
-    addon = args.addon
-    if addon.lower() in ADDONS:
-        subdir, pkg, category = ADDONS[addon.lower()]
-    else:
-        sys.exit(f"unknown addon '{addon}'. Known: {', '.join(ADDONS)}.")
+    ADDONS maps several aliases (plsda/pls-da, ...) to the same subdir; this
+    collapses them so 'all' installs each tool exactly once, in ADDONS order.
+    """
+    seen = set()
+    items = []
+    for key in ADDONS:
+        subdir, pkg, category = ADDONS[key]
+        if subdir not in seen:
+            seen.add(subdir)
+            items.append((subdir, pkg, category))
+    return items
 
-    print(f"Platform      : {platform.system()} {platform.machine()}")
-    exe, desc = find_orange_python(args.python)
-    print(f"Using Orange Python:\n    {exe}   [{desc}]")
 
-    if args.show:
-        print("\nDone (--show). Pass this path to --python if auto-detect fails.")
-        return
-    if args.check:
-        sys.exit(0 if show_location(exe, pkg) else 1)
-
-    # pip subdirectory install from the monorepo
+def install_one(exe, subdir, pkg, category):
+    """Install a single tool (pip '#subdirectory=' from the monorepo)."""
     spec = f"git+https://github.com/{MONOREPO}.git@{BRANCH}#subdirectory={subdir}"
     cmd = [exe, "-m", "pip", "install", "--no-user", "--force-reinstall", spec]
-    print(f"\nInstalling from : {spec}")
-    print("(--no-user prevents the silent per-user-site fallback; on Windows run this\n"
-          " terminal with ADMIN rights so pip can write to Program Files)\n")
+    print(f"\n[{pkg}] Installing from : {spec}")
+    print("    (--no-user prevents the silent per-user-site fallback; on Windows run this\n"
+          "     terminal with ADMIN rights so pip can write to Program Files)")
     rc = subprocess.call(cmd)
     if rc != 0:
-        sys.exit(f"\npip install failed (exit {rc}). See output above. "
+        sys.exit(f"[{pkg}] pip install failed (exit {rc}). See output above. "
                  "If it is a permissions error, re-run as administrator.")
 
     try:
@@ -190,9 +185,52 @@ def main():
     except Exception:
         pass
     show_location(exe, pkg)
+    print(f"\n    [DONE {pkg}] Fully quit Orange (Cmd/Ctrl+Q) and restart - widget under:")
+    print(f"    {category}")
 
-    print("\nDONE. Fully quit Orange (Cmd/Ctrl+Q) and restart - the widget is under:")
-    print("    " + category)
+
+def main():
+    ap = argparse.ArgumentParser(description="Install Orange3 add-ons from the WellerLab monorepo")
+    ap.add_argument("addon", nargs="?", default="plsda",
+                    help="addon key, or 'all' to install the whole suite (default: plsda)")
+    ap.add_argument("--all", dest="install_all", action="store_true",
+                    help="install the entire WellerLab suite (same as 'all')")
+    ap.add_argument("--python", default=None, help="explicit Orange python path")
+    ap.add_argument("--show", action="store_true", help="only locate Orange python, no install")
+    ap.add_argument("--check", action="store_true", help="verify install(s) and exit")
+    args = ap.parse_args()
+
+    addon = (args.addon or "plsda").lower()
+    install_all = args.install_all or addon == "all"
+
+    print(f"Platform      : {platform.system()} {platform.machine()}")
+    exe, desc = find_orange_python(args.python)
+    print(f"Using Orange Python:\n    {exe}   [{desc}]")
+
+    if args.show:
+        print("\nDone (--show). Pass this path to --python if auto-detect fails.")
+        return
+
+    if install_all:
+        items = suite_items()
+        print(f"\nSuite install: {len(items)} tool(s)\n" +
+              "\n".join(f"  - {pkg}  ({subdir})" for subdir, pkg, _ in items))
+        if args.check:
+            results = [show_location(exe, pkg) for _, pkg, _ in items]
+            sys.exit(0 if all(results) else 1)
+        for subdir, pkg, category in items:
+            install_one(exe, subdir, pkg, category)
+        print("\nSUITE INSTALL COMPLETE. Fully quit Orange (Cmd/Ctrl+Q) and restart "
+              "- all WellerLab widgets will be available under their categories.")
+        return
+
+    if addon not in ADDONS:
+        sys.exit(f"unknown addon '{addon}'. Known: {', '.join(ADDONS)} or 'all'.")
+    subdir, pkg, category = ADDONS[addon]
+
+    if args.check:
+        sys.exit(0 if show_location(exe, pkg) else 1)
+    install_one(exe, subdir, pkg, category)
 
 
 if __name__ == "__main__":
