@@ -93,7 +93,7 @@ $ORANGEPY -m pip install git+https://github.com/philippweller/WellerLab.git@main
 **Schritt 3 — Installation prüfen:**
 
 ```bash
-$ORANGEPY -c "import oranjenmr; print('OK')"
+$ORANGEPY -c "import orangenmr; print('OK')"
 ```
 
 Erscheint `OK`, ist das Paket korrekt installiert.
@@ -120,7 +120,7 @@ python -m pip install git+https://github.com/philippweller/WellerLab.git@main#su
 **Schritt 3 — Prüfen:**
 
 ```cmd
-python -c "import oranjenmr; print('OK')"
+python -c "import orangenmr; print('OK')"
 ```
 
 **Schritt 4 — Orange öffnen** und unter **NMR Preprocessing** nachschauen.
@@ -144,7 +144,7 @@ pip install git+https://github.com/philippweller/WellerLab.git@main#subdirectory
 **Schritt 3 — Prüfen:**
 
 ```bash
-python -c "import oranjenmr; print('OK')"
+python -c "import orangenmr; print('OK')"
 ```
 
 **Schritt 4 — Orange starten** und das Widget suchen.
@@ -193,11 +193,11 @@ python -m pip install --upgrade --force-reinstall git+https://github.com/philipp
 
 ```bash
 # macOS
-$ORANGEPY -m pip uninstall oranjenmr -y
+$ORANGEPY -m pip uninstall orangenmr -y
 ```
 ```bash
 # Windows / Linux / Conda
-python -m pip uninstall oranjenmr -y
+python -m pip uninstall orangenmr -y
 ```
 
 Danach Orange neu starten.
@@ -208,8 +208,8 @@ Danach Orange neu starten.
 
 | Problem | Lösung |
 |---|---|
-| `import oranjenmr` schlägt fehl | Du hast das falsche Python benutzt (siehe Schritt 1). |
-| Widget erscheint nicht in Orange | `pip show oranjenmr` prüfen; Orange vollständig neu starten. |
+| `import orangenmr` schlägt fehl | Du hast das falsche Python benutzt (siehe Schritt 1). |
+| Widget erscheint nicht in Orange | `pip show orangenmr` prüfen; Orange vollständig neu starten. |
 | `Host key verification failed` | Nur beim SSH-Workflow relevant — nutze die `git+https://`-URL. |
 | alte Version bleibt | `pip install --force-reinstall` verwenden (siehe Updates). |
 

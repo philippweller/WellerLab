@@ -1,4 +1,4 @@
-"""Widget definitions for oranjenmr (NMR Preprocessing)."""
+"""Widget definitions for orangenmr (NMR Preprocessing)."""
 
 from .ownmrbinning import OWBinning
 from .ownmrnormalize import OWNormalization

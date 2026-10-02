@@ -1,5 +1,5 @@
 """
-oranjenmr — NMR Preprocessing Widgets for Orange3.
+orangenmr — NMR Preprocessing Widgets for Orange3.
 
 Provides widgets for common preprocessing of 1D NMR spectra
 prior to multivariate analysis (PCA, PLS-DA, etc.):

@@ -1,4 +1,4 @@
-"""PCA Well widget - chemometrics PCA with outlier diagnostics for Orange3.
+"""PCA Weller widget - chemometrics PCA with outlier diagnostics for Orange3.
 
 Features vs. the stock OW PCA:
 - preprocessing: none / center / pareto / autoscale (unit variance)
@@ -44,7 +44,7 @@ def _class_color(i):
 
 
 class OWPCAWell(widget.OWWidget):
-    name = "PCA Well"
+    name = "PCA Weller"
     description = ("Chemometrics PCA with scaling, explained variance on axes "
                    "and Hotelling T2/Q-residual outlier diagnostics.")
     icon = "icons/PCAWell.svg"

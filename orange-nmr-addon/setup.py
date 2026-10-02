@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name="oranjenmr",
+    name="orangenmr",
     version="0.1.0",
     description="NMR Preprocessing Widgets for Orange3 — binning, normalization, "
                 "baseline correction, filtering, region exclusion, and alignment",
@@ -17,11 +17,11 @@ setup(
     extras_require={"full": ["orangecontrib.spectroscopy>=0.6"]},
     entry_points={
         "orange.widgets": (
-            "NMR Preprocessing = oranjenmr.widgets",
+            "NMR Preprocessing = orangenmr.widgets",
         ),
     },
     package_data={
-        "oranjenmr": ["widgets/icons/*.svg"],
+        "orangenmr": ["widgets/icons/*.svg"],
     },
     project_urls={
         "Source": "https://github.com/philippweller/WellerLab/tree/main/orange-nmr-addon",

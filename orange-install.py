@@ -37,14 +37,14 @@ ADDONS = {
               "PLS-DA   -> PLS-DA / OPLS-DA"),
     "pls-da": ("orange-plsda-addon", "orangeplsda",
                "PLS-DA   -> PLS-DA / OPLS-DA"),
-    "nmr": ("orange-nmr-addon", "oranjenmr",
+    "nmr": ("orange-nmr-addon", "orangenmr",
             "NMR      -> NMR Preprocessing"),
-    "orange-nmr": ("orange-nmr-addon", "oranjenmr",
+    "orange-nmr": ("orange-nmr-addon", "orangenmr",
                    "NMR      -> NMR Preprocessing"),
     "pca": ("orange-pca-addon", "orangepca",
-            "PCA Well -> PCA Well (chemometrics PCA + T2/Q)"),
+            "PCA Weller -> PCA Weller (chemometrics PCA + T2/Q)"),
     "pca-well": ("orange-pca-addon", "orangepca",
-                 "PCA Well -> PCA Well (chemometrics PCA + T2/Q)"),
+                 "PCA Weller -> PCA Weller (chemometrics PCA + T2/Q)"),
 }
 
 
