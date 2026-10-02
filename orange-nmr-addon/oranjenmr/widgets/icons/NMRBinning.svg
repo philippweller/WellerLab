@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="6" fill="#4CAF50"/>
+  <text font-family="Arial" font-size="8" fill="#fff" x="24" y="12" text-anchor="middle">NMR</text>
+  <polyline points="8,34 14,18 20,28 24,8 28,30 34,16 40,34" fill="none" stroke="#fff" stroke-width="2"/>
+  <text font-family="Arial" font-size="5" fill="#C8E6C9" x="24" y="44" text-anchor="middle">BIN</text>
+</svg>

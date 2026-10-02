@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="6" fill="#00BCD4"/>
+  <text font-family="Arial" font-size="8" fill="#fff" x="24" y="12" text-anchor="middle">NMR</text>
+  <polyline points="8,34 14,26 20,30 24,24 28,28 34,20 40,34" fill="none" stroke="#fff" stroke-width="2"/>
+  <polyline points="8,34 14,26 20,30 24,24 28,28 34,20 40,34" fill="none" stroke="#fff" stroke-width="2" transform="translate(3,0)" opacity="0.3"/>
+  <text font-family="Arial" font-size="5" fill="#B2EBF2" x="24" y="44" text-anchor="middle">REF</text>
+</svg>
