@@ -93,6 +93,10 @@ def fit_pca(X: np.ndarray, scale: str = "auto", n_components=None,
 
     if n_components is None:
         n_comp = max_comp
+    elif n_components == "kaiser":
+        # need all eigenvalues to evaluate the Kaiser criterion -> fit all,
+        # then trim below
+        n_comp = max_comp
     elif isinstance(n_components, (int, np.integer)) and n_components > 1:
         n_comp = int(min(n_components, max_comp))
     elif isinstance(n_components, float) and 0 < n_components < 1:
@@ -107,6 +111,21 @@ def fit_pca(X: np.ndarray, scale: str = "auto", n_components=None,
     eigvals = model.explained_variance_     # c,      per-component variance of scores
     ratio = model.explained_variance_ratio_  # c,
     cum = np.cumsum(ratio)
+
+    if n_components == "kaiser":
+        # Kaiser (1960): keep components whose eigenvalue exceeds the mean
+        # eigenvalue; for autoscaled/correlation PCA this equals the common
+        # rule "eigenvalue > 1". Always at least 1 component.
+        eig_full = eigvals
+        mean_eig = float(eig_full.mean())
+        n_keep = int(np.searchsorted(-eig_full, -mean_eig))  # # > mean
+        n_keep = int(np.clip(n_keep, 1, n_comp))
+        n_comp = n_keep
+        scores = scores[:, :n_comp]
+        loadings = loadings[:, :n_comp]
+        eigvals = eigvals[:n_comp]
+        ratio = ratio[:n_comp]
+        cum = cum[:n_comp]
 
     if isinstance(n_components, float) and 0 < n_components < 1:
         # round up to first component reaching the threshold

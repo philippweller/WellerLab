@@ -49,7 +49,13 @@ class OWPCAWell(widget.OWWidget):
                    "and Hotelling T2/Q-residual outlier diagnostics.")
     icon = "icons/PCAWell.svg"
     priority = 3120
-    keywords = "pca, t2, hotelling, q residual, outlier, chemometrics, autoscale"
+    keywords = "pca, t2, hotelling, q residual, outlier, chemometrics, autoscale, kaiser"
+
+    # comp_method index: 0 = kaiser, 1 = frac, 2 = count
+    COMP_METHODS = ("kaiser", "frac", "count")
+    COMP_METHOD_LABELS = ("Kaiser criterion (automatic)",
+                          "Explained variance fraction",
+                          "Fixed number")
 
     class Inputs:
         data = Input("Data", Table)
@@ -64,9 +70,9 @@ class OWPCAWell(widget.OWWidget):
 
     # settings
     scale = Setting("auto")
-    comp_method = Setting("frac")          # 'frac' | 'count'
-    n_components = Setting(2)              # used when comp_method == 'count'
-    variance_frac = Setting(0.80)          # used when comp_method == 'frac'
+    comp_method = Setting(1)           # index into COMP_METHODS: 0=kaiser,1=frac,2=count
+    n_components = Setting(2)              # used when comp_method == 2 (count)
+    variance_frac = Setting(0.80)          # used when comp_method == 1 (frac)
     alpha = Setting(0.05)
     use_T2 = Setting(True)
     use_Q = Setting(True)
@@ -98,8 +104,7 @@ class OWPCAWell(widget.OWWidget):
         # --- components ------------------------------------------------
         cbox = gui.widgetBox(self.controlArea, "Components")
         gui.comboBox(
-            cbox, self, "comp_method",
-            items=("Explained variance fraction", "Fixed number"),
+            cbox, self, "comp_method", items=self.COMP_METHOD_LABELS,
             label="Method:", callback=self._param_changed,
             orientation=Qt.Horizontal)
         self.frac_spin = gui.doubleSpin(
@@ -165,18 +170,30 @@ class OWPCAWell(widget.OWWidget):
         self._recalc_enabled_controls()
         self._fit()
 
+    def _comp_method_name(self):
+        """Current method key: 'kaiser' | 'frac' | 'count'."""
+        i = self.comp_method
+        if not (0 <= i < len(self.COMP_METHODS)):
+            i = 1
+        return self.COMP_METHODS[i]
+
     def _recalc_enabled_controls(self):
-        is_count = self.comp_method == "count"
+        m = self._comp_method_name()
+        is_count = m == "count"
+        is_frac = m == "frac"
         for spin, enable in ((self.count_spin, is_count),
-                             (self.frac_spin, not is_count)):
+                             (self.frac_spin, is_frac)):
             try:
                 spin.setEnabled(enable)
             except Exception:
                 pass
 
     def _resolved_n(self):
-        if self.comp_method == "count":
+        m = self._comp_method_name()
+        if m == "count":
             return int(self.n_components)
+        if m == "kaiser":
+            return "kaiser"
         return float(self.variance_frac)
 
     def _fit(self):
@@ -372,6 +389,7 @@ class OWPCAWell(widget.OWWidget):
         r = self.analytics.result
         self.report_items((
             ("Preprocessing", self.scale),
+            ("Component method", self._comp_method_name()),
             ("Components", r["n_components"]),
             ("Explained variance", f"{100 * r['cumulative'][-1]:.1f}%"),
             ("T2 limit", f"{self.analytics.T2_lim:.3f}"),
@@ -379,6 +397,17 @@ class OWPCAWell(widget.OWWidget):
         ))
         self.report_plot(self.scores_plot)
         self.report_plot(self.t2q_plot)
+
+    @classmethod
+    def migrate_settings(cls, settings, version):
+        # comp_method was originally a string ('kaiser'/'frac'/'count');
+        # now an index into COMP_METHODS. Convert old string -> index.
+        cm = settings.get("comp_method")
+        if isinstance(cm, str):
+            try:
+                settings["comp_method"] = cls.COMP_METHODS.index(cm)
+            except ValueError:
+                settings["comp_method"] = 1  # fallback to frac
 
 
 if __name__ == "__main__":  # pragma: no cover
