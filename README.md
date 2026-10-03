@@ -41,6 +41,27 @@ python3 orange-install.py --python /pfad/zum/orange/python   # Erkennung übersc
 
 Klappt die Auto-Erkennung auf einem Rechner nicht, liefere `--python <pfad>` an.
 
+## 📦 Installation über Oranges Add-ons-Dialog (PyPI)
+
+Oranges eigener Add-ons-Dialog (`Options → Add-ons`) installiert Pakete von
+**PyPI**. Sind die Pakete dort veröffentlicht, kann die Gruppe sie direkt im
+Dialog suchen und installieren:
+
+1. **Options → Add-ons… → "Add add-on by name"**
+2. Paketnamen eintippen: `orangeplsda`, `orangenmr` oder `orangepca`
+3. **Add** → installieren → Orange neu starten
+
+| Paketname | Inhalt |
+|---|---|
+| `orangeplsda` | PLS-DA + OPLS-DA |
+| `orangenmr` | NMR Preprocessing |
+| `orangepca` | PCA Weller |
+
+> **Veröffentlichen:** die Pakete werden mit `./publish-pypi.sh` (benötigt
+> einen PyPI-API-Token) auf PyPI hochgeladen — siehe `pypi-publish.md`.
+> Solange sie nicht auf PyPI sind, findet der Dialog sie nicht; dann den
+> `orange-install.py`-Weg oben verwenden.
+
 ## 🔧 Manuelle Installation (je Paket)
 
 Jedes Paket installiert per pip-`subdirectory`-Spezifikation, ganz auf eigenem
