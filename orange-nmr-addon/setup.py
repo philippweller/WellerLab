@@ -30,8 +30,8 @@ setup(
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Science/Research",
-        "Topic :: Scientific/Engineering :: Chemistry :: NMR",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
+        "Topic :: Scientific/Engineering :: Chemistry",
         "License :: OSI Approved :: MIT License",
     ],
     keywords="nmr, preprocessing, chemometrics, orange3, widget",
