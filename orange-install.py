@@ -164,13 +164,26 @@ def suite_items():
     return items
 
 
-def install_one(exe, subdir, pkg, category):
-    """Install a single tool (pip '#subdirectory=' from the monorepo)."""
+def install_one(exe, subdir, pkg, category, upgrade_no_deps=True):
+    """Install a single tool (pip '#subdirectory=' from the monorepo).
+
+    Deliberately does NOT use a bare `--force-reinstall`: on Orange's bundled
+    universal2/arm64 Python, forcing a full reinstall makes pip re-resolve ALL
+    dependencies (scipy, scikit-learn, pandas, matplotlib ...) and can pull
+    x86_64 wheels, breaking Orange (see 2026-10 incident). We instead install
+    normally, and only upgrade the add-on package itself with --no-deps so the
+    bundled dependency versions are left untouched.
+    """
     spec = f"git+https://github.com/{MONOREPO}.git@{BRANCH}#subdirectory={subdir}"
-    cmd = [exe, "-m", "pip", "install", "--no-user", "--force-reinstall", spec]
+    cmd = [exe, "-m", "pip", "install", "--no-user"]
+    if upgrade_no_deps:
+        cmd += ["--upgrade", "--no-deps"]   # refresh the add-on, keep deps intact
+    cmd.append(spec)
     print(f"\n[{pkg}] Installing from : {spec}")
     print("    (--no-user prevents the silent per-user-site fallback; on Windows run this\n"
           "     terminal with ADMIN rights so pip can write to Program Files)")
+    print("    (uses --upgrade --no-deps: updates only the WellerLab package and leaves\n"
+          "     Orange's bundled dependencies untouched, so it cannot break arm64 Python)")
     rc = subprocess.call(cmd)
     if rc != 0:
         sys.exit(f"[{pkg}] pip install failed (exit {rc}). See output above. "
