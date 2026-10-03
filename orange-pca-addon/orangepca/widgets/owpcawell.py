@@ -15,6 +15,8 @@ import numpy as np
 import pyqtgraph as pg
 
 from AnyQt.QtCore import Qt
+from AnyQt.QtWidgets import QApplication
+from pyqtgraph import ScatterPlotItem
 from Orange.data import Table, Domain, ContinuousVariable, StringVariable
 from Orange.data.util import get_unique_names
 from Orange.widgets import gui, widget
@@ -57,6 +59,10 @@ class OWPCAWell(widget.OWWidget):
                           "Explained variance fraction",
                           "Fixed number")
 
+    # scale index: 0 = auto, 1 = pareto, 2 = center, 3 = none
+    SCALES = ("auto", "pareto", "center", "none")
+    SCALE_LABELS = ("Autoscale (unit variance)", "Pareto", "Center only", "None")
+
     class Inputs:
         data = Input("Data", Table)
 
@@ -69,7 +75,7 @@ class OWPCAWell(widget.OWWidget):
         inliers = Output("Inliers", Table)
 
     # settings
-    scale = Setting("auto")
+    scale = Setting(0)             # index into SCALES: 0=auto,1=pareto,2=center,3=none
     comp_method = Setting(1)           # index into COMP_METHODS: 0=kaiser,1=frac,2=count
     n_components = Setting(2)              # used when comp_method == 2 (count)
     variance_frac = Setting(0.80)          # used when comp_method == 1 (frac)
@@ -89,11 +95,13 @@ class OWPCAWell(widget.OWWidget):
         self.analytics = None          # pa.PCAOutliers
         self._scores = None
         self._loadings = None
+        self._selected = set()         # row indices selected in the plots
+        self._scatter_items = []       # ScatterPlotItem + their row indices
 
         # --- control area: preprocessing -------------------------------
         box = gui.widgetBox(self.controlArea, "Preprocessing")
         gui.comboBox(
-            box, self, "scale", items=("auto", "pareto", "center", "none"),
+            box, self, "scale", items=self.SCALE_LABELS,
             label="Scaling:", callback=self._param_changed,
             orientation=Qt.Horizontal)
         gui.checkBox(box, self, "color_by_class", "Colour scores by class",
@@ -129,6 +137,19 @@ class OWPCAWell(widget.OWWidget):
                        callback=self._remove_outliers)
         b.setEnabled(False)
         self._remove_button = b
+        self.remove_selected_button = gui.button(
+            obox, self, "Remove selected point(s)",
+            callback=self._remove_selected)
+        self.remove_selected_button.setEnabled(False)
+        self.clear_selection_button = gui.button(
+            obox, self, "Clear selection",
+            callback=self._clear_selection)
+
+        # --- reset to defaults ------------------------------------------
+        rbox = gui.widgetBox(self.controlArea, "Defaults")
+        self.reset_button = gui.button(
+            rbox, self, "Reset all to defaults",
+            callback=self._reset_defaults)
 
         gui.rubber(self.controlArea)
         gui.auto_apply(self.buttonsArea, self, "auto_commit")
@@ -152,6 +173,9 @@ class OWPCAWell(widget.OWWidget):
     @Inputs.data
     def set_data(self, data):
         self.data = data
+        self._selected.clear()
+        self._scatter_items = []
+        self._update_selection_buttons()
         self.clear_messages()
         if data is None or not len(data):
             self.analytics = None
@@ -176,6 +200,13 @@ class OWPCAWell(widget.OWWidget):
         if not (0 <= i < len(self.COMP_METHODS)):
             i = 1
         return self.COMP_METHODS[i]
+
+    def _scale_name(self):
+        """Current scaling key: 'auto' | 'pareto' | 'center' | 'none'."""
+        i = self.scale
+        if not (0 <= i < len(self.SCALES)):
+            i = 0
+        return self.SCALES[i]
 
     def _recalc_enabled_controls(self):
         m = self._comp_method_name()
@@ -202,7 +233,7 @@ class OWPCAWell(widget.OWWidget):
         X = self.data.X.copy()
         try:
             self.analytics = pa.PCAOutliers(
-                X, scale=self.scale, n_components=self._resolved_n(),
+                X, scale=self._scale_name(), n_components=self._resolved_n(),
                 alpha=self.alpha)
         except Exception as exc:  # pragma: no cover
             self.Error.fit_failed(str(exc))
@@ -249,6 +280,28 @@ class OWPCAWell(widget.OWWidget):
         self._fit()
         self.information(f"Removed {n_removed} outlier(s); model refit on {len(keep)} samples.")
 
+    def _reset_defaults(self):
+        """Reset every Setting to its class default and recompute."""
+        if self.data is None:
+            return
+        for name in self._all_setting_names():
+            default = getattr(type(self), name)
+            if isinstance(default, Setting):
+                setattr(self, name, default.default)
+        self._recalc_enabled_controls()
+        self._fit()
+        self.information("All settings reset to defaults.")
+
+    def _all_setting_names(self):
+        """Names of the Setting attributes defined on this widget."""
+        names = []
+        import inspect
+        for cls in type(self).__mro__:
+            for name, val in vars(cls).items():
+                if isinstance(val, Setting) and name not in names:
+                    names.append(name)
+        return names
+
     # ------------------------------------------------------------------ rendering
     def _variance_label(self, k):
         """Percent explained variance for component k (1-indexed season)."""
@@ -257,6 +310,72 @@ class OWPCAWell(widget.OWWidget):
         if k <= len(ratio):
             return f"PC{k} ({100 * ratio[k - 1]:.1f}%)"
         return f"PC{k}"
+
+    def _add_interactive_scatter(self, plot, x, y, rows, color=None, size=None):
+        """Add a clickable ScatterPlotItem to `plot`; each point carries its
+        row index in `data` so clicks map back to the sample row."""
+        rows = np.asarray(rows)
+        scatter = ScatterPlotItem()
+        sz = size if size is not None else self.point_size
+        scatter.setData(
+            x=x, y=y, size=sz, data=rows,
+            pen=pg.mkPen(None), symbol="o", brush=color or (0, 0, 0))
+        scatter.sigClicked.connect(lambda item, points: self._on_point_click(item, points))
+        self._scatter_items.append((scatter, rows))
+        plot.addItem(scatter)
+
+    def _on_point_click(self, item, points):
+        """Toggle selection of clicked point(s). Modifier = keyboard state is
+        read via QApplication; default selects the clicked point."""
+        for pt in points:
+            idx = pt.data()
+            self._select_index(idx)
+        self._replot()
+        self._replot_t2q()
+
+    def _select_index(self, idx):
+        """Select a single row index (toggle with Ctrl/Cmd, else set-only)."""
+        mods = QApplication.keyboardModifiers()
+        if mods & (Qt.ControlModifier | Qt.MetaModifier):
+            if idx in self._selected:
+                self._selected.discard(idx)
+            else:
+                self._selected.add(idx)
+        else:
+            self._selected = {idx}
+        self._update_selection_buttons()
+
+    def _selected_rows(self):
+        """All selected row indices, filtered to valid range."""
+        n = len(self.data) if self.data is not None else 0
+        return sorted(i for i in self._selected if 0 <= i < n)
+
+    def _clear_selection(self):
+        self._selected.clear()
+        self._update_selection_buttons()
+        self._replot()
+        self._replot_t2q()
+
+    def _remove_selected(self):
+        """Remove the manually selected point(s) and refit the model."""
+        sel = self._selected_rows()
+        if not sel or self.data is None:
+            return
+        keep_mask = np.ones(len(self.data), dtype=bool)
+        keep_mask[sel] = False
+        self.data = self.data[keep_mask]
+        self._selected.clear()
+        self._update_selection_buttons()
+        self._fit()
+        self.information(f"Removed {len(sel)} selected point(s); model refit on "
+                         f"{len(self.data)} samples.")
+
+    def _update_selection_buttons(self):
+        has = len(self._selected) > 0
+        try:
+            self.remove_selected_button.setEnabled(has)
+        except Exception:
+            pass
 
     def _render_scores(self):
         self.scores_plot.clear()
@@ -268,25 +387,36 @@ class OWPCAWell(widget.OWWidget):
         self.scores_plot.setLabel("left", self._variance_label(2))
         x = s[:, 0]
         y = s[:, 1] if s.shape[1] > 1 else np.zeros_like(x)
-        size = self.point_size
+        rows = np.arange(len(x))
+
+        base_size = self.point_size
         if self.size_by_Q:
             q = self.analytics.Q
             qn = (q - q.min()) / (q.max() - q.min() + 1e-12)
-            size = 3 + 13 * qn
-        colors = None
+            base_size = 3 + 13 * qn
+
+        # class-coloured scatter (or single colour) keeping per-index mapping
         if self.color_by_class and self.data.domain.has_discrete_class:
             yv = self.data.Y.astype(int)
-            classes = self.data.domain.class_var.values
-            n = len(classes)
-            for i, cname in enumerate(classes):
-                m = yv == i
+            for i_class in np.unique(yv):
+                m = yv == i_class
                 if m.any():
-                    self.scores_plot.plot(x[m], y[m], pen=None,
-                                          symbol="o", symbolSize=size[m],
-                                          symbolBrush=_class_color(i))
+                    rge = np.where(m)[0]
+                    self._add_interactive_scatter(
+                        self.scores_plot, x[m], y[m], rge,
+                        color=_class_color(int(i_class)),
+                        size=base_size[m])
         else:
-            self.scores_plot.plot(x, y, pen=None, symbol="o",
-                                  symbolSize=size, symbolBrush=(0, 0, 0))
+            self._add_interactive_scatter(self.scores_plot, x, y, rows)
+
+        # highlight selection on top
+        sel = self._selected_rows()
+        if sel:
+            sel_arr = np.asarray(sel)
+            self._add_interactive_scatter(
+                self.scores_plot, x[sel_arr], y[sel_arr], sel_arr,
+                color=(255, 20, 35, 200),
+                size=np.full(len(sel), max(base_size) + 3))
 
     def _render_t2q(self):
         self.t2q_plot.clear()
@@ -296,7 +426,16 @@ class OWPCAWell(widget.OWWidget):
         Q = self.analytics.Q
         t2l = self.analytics.T2_lim
         ql = self.analytics.Q_lim
-        self.t2q_plot.plot(T2, Q, pen=None, symbol="o", symbolSize=self.point_size)
+        rows = np.arange(len(T2))
+        self._add_interactive_scatter(self.t2q_plot, T2, Q, rows,
+                                      color=(0, 0, 0))
+        # highlight selection
+        sel = self._selected_rows()
+        if sel:
+            sel_arr = np.asarray(sel)
+            self._add_interactive_scatter(
+                self.t2q_plot, T2[sel_arr], Q[sel_arr], sel_arr,
+                color=(255, 20, 35, 200), size=self.point_size + 3)
         # control limits
         if np.isfinite(t2l):
             self.t2q_plot.plot([t2l, t2l], [0, Q.max() + Q.std() + 1e-9],
@@ -388,7 +527,7 @@ class OWPCAWell(widget.OWWidget):
             return
         r = self.analytics.result
         self.report_items((
-            ("Preprocessing", self.scale),
+            ("Preprocessing", self._scale_name()),
             ("Component method", self._comp_method_name()),
             ("Components", r["n_components"]),
             ("Explained variance", f"{100 * r['cumulative'][-1]:.1f}%"),
@@ -400,6 +539,14 @@ class OWPCAWell(widget.OWWidget):
 
     @classmethod
     def migrate_settings(cls, settings, version):
+        # scale was originally a string ('auto'/'pareto'/'center'/'none');
+        # now an index into SCALES. Convert old string -> index.
+        sc = settings.get("scale")
+        if isinstance(sc, str):
+            try:
+                settings["scale"] = cls.SCALES.index(sc)
+            except ValueError:
+                settings["scale"] = 0  # fallback to auto
         # comp_method was originally a string ('kaiser'/'frac'/'count');
         # now an index into COMP_METHODS. Convert old string -> index.
         cm = settings.get("comp_method")
