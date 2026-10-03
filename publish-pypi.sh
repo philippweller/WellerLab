@@ -59,7 +59,17 @@ for p in "${PKGS[@]}"; do
   d="$REPO/$(subdir_of "$p")"
   echo
   echo "==> Building $p ($d)"
-  "$ORANGEPY" -m build --wheel --sdist --outdir "$OUT" "$d"
+  # Build quietly: keep setuptools' tall log only on failure; on success show
+  # just the "Successfully built" line. Still aborts on a real build error.
+  buildlog="$(mktemp)"
+  if ! "$ORANGEPY" -m build --wheel --sdist --outdir "$OUT" "$d" >"$buildlog" 2>&1; then
+    echo "BUILD FAILED for $p:" >&2
+    cat "$buildlog" >&2
+    rm -f "$buildlog"
+    exit 1
+  fi
+  grep -E "Successfully built" "$buildlog" || true
+  rm -f "$buildlog"
 done
 
 echo
