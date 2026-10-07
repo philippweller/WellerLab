@@ -6,7 +6,7 @@
 #   ./publish-pypi.sh [--test] [pkg1 pkg2 ...]
 #
 #   --test   upload to TestPyPI instead of real PyPI
-#   pkgs     which packages; default = all three (plsda nmr pca)
+#   pkgs     which packages; default = all four (plsda nmr pca metabo)
 #
 # Requirements:
 #   - run with Orange's own python so deps are satisfied:
@@ -17,7 +17,7 @@
 #
 # After publishing, group members can install inside Orange via
 #   Orange → Options → Add-ons → Add add-on by name → type the package name
-#   (orangeplsda / orangenmr / orangepca)
+#   (orangeplsda / orangenmr / orangepca / orangemetabo)
 #
 set -euo pipefail
 
@@ -32,6 +32,7 @@ subdir_of() {
     plsda) echo orange-plsda-addon ;;
     nmr)   echo orange-nmr-addon ;;
     pca)   echo orange-pca-addon ;;
+    metabo) echo orange-metabo-addon ;;
     *)     echo "" ;;
   esac
 }
@@ -42,11 +43,11 @@ if [[ "${1:-}" == "--test" ]]; then TEST=1; shift; fi
 PKGS=()
 if [[ $# -gt 0 ]]; then
   for p in "$@"; do
-    [[ -n "$(subdir_of "$p")" ]] || { echo "unknown pkg: $p (use plsda|nmr|pca)" >&2; exit 2; }
+    [[ -n "$(subdir_of "$p")" ]] || { echo "unknown pkg: $p (use plsda|nmr|pca|metabo)" >&2; exit 2; }
     PKGS+=("$p")
   done
 else
-  PKGS=(plsda nmr pca)
+  PKGS=(plsda nmr pca metabo)
 fi
 
 OUT="$REPO/dist-pypi"

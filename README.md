@@ -15,6 +15,7 @@ aus diesem Repo.
 | `orange-plsda-addon/` | `orangeplsda` | **PLS-DA** | PLS-DA + OPLS-DA-Klassifikation (inkl. S-Plot) |
 | `orange-nmr-addon/` | `orangenmr` | **NMR Preprocessing** | NMR-Binning, -Normalisierung, -Baseline, -Filter, Regionen, Alignment |
 | `orange-pca-addon/` | `orangepca` | **PCA Weller** | Chemometrie-PCA: Scaling, Varianz % an Achsen, Hotelling-T2/Q-Ausreißer-Diagnostik + Filter |
+| `orange-metabo-addon/` | `orangemetabo` | **Metabo Weller** | MetaboAnalyst-Stil: Feature-Table-Import, Preprocessing, Filter, univariate Stats (ANOVA/Welch/KW + BH-FDR), Heatmap |
 
 Neue Tools kommen als eigener Unterordner mit eigenem `setup.py` dazu (Muster siehe
 `orange-plsda-addon/`). Danach einen Eintrag in `ADDONS` in `orange-install.py` ergänzen.
@@ -32,6 +33,8 @@ curl -fsSL https://raw.githubusercontent.com/philippweller/WellerLab/main/orange
 python3 orange-install.py plsda      # PLS-DA + OPLS-DA
 python3 orange-install.py nmr        # NMR Preprocessing
 python3 orange-install.py pca        # PCA Weller (chemometrics PCA + T2/Q)
+python3 orange-install.py metabo     # Metabo Weller (Feature-Table -> Stats -> Heatmap)
+python3 orange-install.py all        # die gesamte Suite
 
 # sonst:
 python3 orange-install.py --show     # findet Oranges Python, installiert nicht
@@ -48,7 +51,7 @@ Oranges eigener Add-ons-Dialog (`Options → Add-ons`) installiert Pakete von
 Dialog suchen und installieren:
 
 1. **Options → Add-ons… → "Add add-on by name"**
-2. Paketnamen eintippen: `orangeplsda`, `orangenmr` oder `orangepca`
+2. Paketnamen eintippen: `orangeplsda`, `orangenmr`, `orangepca` oder `orangemetabo`
 3. **Add** → installieren → Orange neu starten
 
 | Paketname | Inhalt |
@@ -56,6 +59,7 @@ Dialog suchen und installieren:
 | `orangeplsda` | PLS-DA + OPLS-DA |
 | `orangenmr` | NMR Preprocessing |
 | `orangepca` | PCA Weller |
+| `orangemetabo` | Metabo Weller |
 
 > **Veröffentlichen:** die Pakete werden mit `./publish-pypi.sh` (benötigt
 > einen PyPI-API-Token) auf PyPI hochgeladen — siehe `pypi-publish.md`.

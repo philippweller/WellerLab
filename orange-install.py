@@ -48,6 +48,10 @@ ADDONS = {
             "PCA Weller -> PCA Weller (chemometrics PCA + T2/Q)"),
     "pca-well": ("orange-pca-addon", "orangepca",
                  "PCA Weller -> PCA Weller (chemometrics PCA + T2/Q)"),
+    "metabo": ("orange-metabo-addon", "orangemetabo",
+               "Metabo Weller -> Metabo (feature table -> stats -> heatmap)"),
+    "orange-metabo": ("orange-metabo-addon", "orangemetabo",
+                      "Metabo Weller -> Metabo (feature table -> stats -> heatmap)"),
 }
 
 

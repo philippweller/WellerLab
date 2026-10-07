@@ -9,7 +9,7 @@ Kommandozeile auf den Zielrechnern). Der Dialog installiert Pakete von PyPI
 Oranges Add-ons-Dialog (`orange-canvas-core` `addons.py`) sucht Pakete
 ausschließlich auf **PyPI** (`query_pypi`) und installiert sie per
 `pip install <name>`. GitHub-Repos sind dort nicht auffindbar. Einen Git-URL
-kann der Dialog nicht installieren. → **Die drei Pakete müssen auf PyPI
+kann der Dialog nicht installieren. → **Die vier Pakete müssen auf PyPI
 veröffentlicht werden.**
 
 | Paketname | Inhalt | Orange-Kategorie |
@@ -17,13 +17,14 @@ veröffentlicht werden.**
 | `orangeplsda` | PLS-DA + OPLS-DA | PLS-DA |
 | `orangenmr` | NMR-Preprocessing | NMR Preprocessing |
 | `orangepca` | PCA Weller | WellerLab PCA |
+| `orangemetabo` | MetaboAnalyst-Stil Feature-Table-Statistik | Metabo Weller |
 
 ## Voraussetzungen
 
 1. Die `publish-pypi.sh` wird mit **Oranges eigenem Python** ausgeführt.
 2. Du brauchst einen **PyPI-API-Token**:
    - Erstellen: pypi.org → Account settings → API tokens → "Add token"
-     (Scope: jeden der drei Projekte einzeln, oder ein Account-Scoped Token).
+     (Scope: jeden der vier Projekte einzeln, oder ein Account-Scoped Token).
 
 ## Veröffentlichen (einmalig)
 
@@ -52,7 +53,7 @@ Nach der Veröffentlichung, in einer laufenden Orange:
 
 1. **Options → Add-ons…**
 2. **"Add add-on by name"** klicken
-3. Paketname tippen: `orangepca` (bzw. `orangeplsda`, `orangenmr`)
+3. Paketname tippen: `orangepca` (bzw. `orangeplsda`, `orangenmr`, `orangemetabo`)
 4. **Add** → Installieren
 5. Orange neu starten (Cmd/Ctrl+Q) → Widget unter seiner Kategorie
 
