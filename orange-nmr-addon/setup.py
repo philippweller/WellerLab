@@ -1,10 +1,15 @@
+from pathlib import Path
 from setuptools import setup, find_packages
+
+HERE = Path(__file__).parent
 
 setup(
     name="orangenmr",
     version="0.1.0",
     description="NMR Preprocessing Widgets for Orange3 — binning, normalization, "
                 "baseline correction, filtering, region exclusion, and alignment",
+    long_description=(HERE / "README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
     packages=find_packages(),
     include_package_data=True,
     author="Philipp Weller",

@@ -1,4 +1,7 @@
+from pathlib import Path
 from setuptools import setup, find_packages
+
+HERE = Path(__file__).parent
 
 setup(
     name="orangeplsda",
@@ -6,6 +9,8 @@ setup(
     description="PLS-DA & OPLS-DA with S-Plot — classification, "
                 "biomarker discovery, and orthogonal signal correction "
                 "for Orange3",
+    long_description=(HERE / "README.md").read_text(encoding="utf-8"),
+    long_description_content_type="text/markdown",
     packages=find_packages(),
     include_package_data=True,
     author="Philipp Weller",
