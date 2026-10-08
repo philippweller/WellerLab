@@ -23,7 +23,7 @@ Feature Table CSV ──> Preprocess ──> [Filter] ──> Univariate Stats �
 | Metabo Preprocess | Optional imputation (min / k-NN) → sum-normalisation → log2 → autoscale (z) / Pareto |
 | Metabo Feature Filter | Drop features by missing fraction, zero variance, constant, or below-detection threshold |
 | Metabo Univariate Stats | One-way ANOVA, Welch two-sample t-test, or Kruskal-Wallis per feature + Benjamini-Hochberg FDR + log2FC + group means |
-| Metabo Volcano | Volcano plot (log2FC vs. −log10 FDR) for a chosen two-group contrast from the results; FDR/|log2FC| thresholds, direction colours, top-N labels, PNG/SVG export; emits the significant features |
+| Metabo Volcano | Volcano plot (log2FC vs. −log10 FDR) for a chosen two-group contrast from the results; FDR/|log2FC| thresholds, direction colours, top-N labels, PNG/SVG export; **click a point to select a feature** (shift-click to add) and see its per-group distribution as a box plot (needs the Data input); emits the significant features and the selected features' sample values |
 | Metabo Heatmap | Top-N features by p, Ward/Euclidean row clustering, group bar, PNG/SVG export |
 
 ## Correctness

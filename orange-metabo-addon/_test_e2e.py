@@ -113,7 +113,9 @@ assert built is not None and built[0].shape[0] == 20
 
 # ---- 6) volcano ---------------------------------------------------------
 from orangemetabo.widgets.owvolcano import OWVolcano
-cap("vol", vol := OWVolcano(), "selected")
+vol = OWVolcano()
+cap("vol", vol, "selected")
+cap("vol_fv", vol, "feature_values")
 vol.fdr_alpha = 0.05
 vol.fc_thresh = 1.0
 vol.set_results(t_stats)
@@ -132,5 +134,39 @@ mn = {m.name: _np.asarray(t_stats.X[:, i], float)
       for i, m in enumerate(t_stats.domain.attributes)}
 assert _np.allclose(tab["log2FC"].to_numpy(float), mn[f"mean_{ga}"] - mn[f"mean_{gb}"],
                     atol=1e-12)
+
+# ---- 7) volcano point selection -> per-group box plot -------------------
+vol.set_data(t_pre)
+assert not vol.Warning.need_data.is_shown()
+
+
+class _Pick:
+    def __init__(self, artist, ind):
+        self.artist, self.ind = artist, ind
+
+
+vol._on_pick(_Pick(vol._sc, [0]))
+assert vol._selected == [str(vol._feat[0])], vol._selected
+fv = captured["vol_fv"]
+assert fv is not None and len(fv) == len(t_pre)
+# the distribution panel drew a box plot (boxes are patches)
+axes = vol.dist_canvas.fig.axes
+nboxes = len(axes[0].patches) if axes else 0
+assert len(axes) == 1 and nboxes >= 4
+vol._on_pick(_Pick(vol._sc, [1]))
+assert len(vol._selected) == 1 and vol._selected == [str(vol._feat[1])]
+vol._clear_selection()
+assert vol._selected == [] and captured["vol_fv"] is None
+print(f"[8] selection: pick -> box plot ({nboxes} boxes), "
+      f"feature_values rows={len(fv)}, clear OK")
+
+# ---- 8) connecting Data after a selection must refresh the output --------
+vol._on_pick(_Pick(vol._sc, [2]))
+vol.set_data(None)
+assert captured["vol_fv"] is None
+vol.set_data(t_pre)
+assert captured["vol_fv"] is not None and len(captured["vol_fv"]) == len(t_pre)
+print(f"[9] Data (re)connect refreshes Feature Values "
+      f"({len(captured['vol_fv'])} rows) without re-clicking")
 
 print("\nALL END-TO-END CHECKS PASSED — 97/97 features match ground truth via widgets.")
