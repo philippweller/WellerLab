@@ -241,3 +241,42 @@ def format_p(v):
     if v < 1e-4:
         return f"{v:.2e}"
     return f"{v:.4f}"
+
+
+# --------------------------------------------------------------------------
+# Volcano (contrast derived from per-group means)
+# --------------------------------------------------------------------------
+
+def volcano_table(df, group_a, group_b, fdr_col="FDR_BH", alpha=0.05, fc=1.0):
+    """Build a volcano table for the contrast `group_a` vs `group_b`.
+
+    Operates on a univariate results frame (as produced by `univariate` +
+    `add_group_means`): it needs a `Feature` column, the two `mean_<group>`
+    columns and an FDR column. Group means live in the (log2) space the data
+    was supplied in, so the fold change is their difference:
+
+        log2FC = mean_a - mean_b      (positive => higher in group_a)
+
+    Returns a DataFrame with columns
+      Feature, log2FC, FDR_BH, neglog10FDR, direction,
+    where direction is "up"  (FDR < alpha and log2FC >=  fc),
+                     "down"(FDR < alpha and log2FC <= -fc),
+                     "ns"  otherwise.
+    """
+    ca, cb = f"mean_{group_a}", f"mean_{group_b}"
+    for c in ("Feature", ca, cb, fdr_col):
+        if c not in df.columns:
+            raise ValueError(f"volcano needs column {c!r}")
+    lfc = df[ca].to_numpy(float) - df[cb].to_numpy(float)
+    fdr = df[fdr_col].to_numpy(float)
+    out = pd.DataFrame({
+        "Feature": df["Feature"].to_numpy(),
+        "log2FC": lfc,
+        "FDR_BH": fdr,
+        "neglog10FDR": -np.log10(np.clip(fdr, np.finfo(float).tiny, None)),
+    })
+    sig = fdr < alpha
+    out["direction"] = np.where(
+        sig & (lfc >= fc), "up",
+        np.where(sig & (lfc <= -fc), "down", "ns"))
+    return out

@@ -33,3 +33,24 @@ for a, b, tol in [("stat", "F", 1e-3), ("p", "p", 1e-3), ("FDR_BH", "FDR_BH", 1e
 print("sig FDR<0.05  mine=%d gt=%d" % ((mi["FDR_BH"] < 0.05).sum(), (m["FDR_BH"] < 0.05).sum()))
 print("\nTop-5 mine:"); print(mi.head(5)[["stat", "p", "FDR_BH"]].to_string())
 print("\nTop-5 GT:  ");  print(m.head(5)[["F", "p", "FDR_BH"]].to_string())
+
+# ---------------------------------------------------------------------------
+# Volcano: the contrast must equal the Welch log2FC and the ground truth.
+# ---------------------------------------------------------------------------
+dfw, lvw = mc.univariate(Xl, groups, "welch", base="WILD", treats=["ANF"],
+                         feature_names=feat)
+dfw = mc.add_group_means(dfw, Xl, groups, lvw, feature_names=feat)
+vol = mc.volcano_table(dfw, "ANF", "WILD", alpha=0.05, fc=1.0).set_index("Feature")
+
+ok_fc = np.allclose(vol.loc[common, "log2FC"].values,
+                    dfw.set_index("Feature").loc[common, "log2FC"].values,
+                    atol=1e-12)
+ok_gt = np.allclose(vol.loc[common, "log2FC"].values,
+                    gt.loc[common, "log2FC_ANF_vs_WILD"].values, atol=1e-3)
+print(f"\nvolcano log2FC == welch log2FC : {ok_fc}")
+print(f"volcano log2FC == GT           : {ok_gt} (97/97 within 1e-3)")
+print("volcano ANF vs WILD direction  : "
+      f"up={int((vol['direction'] == 'up').sum())} "
+      f"down={int((vol['direction'] == 'down').sum())} "
+      f"ns={int((vol['direction'] == 'ns').sum())}")
+assert ok_fc and ok_gt

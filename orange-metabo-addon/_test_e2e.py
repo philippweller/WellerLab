@@ -107,4 +107,26 @@ print(f"[6] heatmap: built={built is not None}, top rows={built[0].shape[0] if b
       f"export canvas OK")
 assert built is not None and built[0].shape[0] == 20
 
+# ---- 6) volcano ---------------------------------------------------------
+from orangemetabo.widgets.owvolcano import OWVolcano
+cap("vol", vol := OWVolcano(), "selected")
+vol.fdr_alpha = 0.05
+vol.fc_thresh = 1.0
+vol.set_results(t_stats)
+tab = vol._volcano
+assert tab is not None and len(tab) == len(t_stats)
+nup = int((tab["direction"] == "up").sum())
+ndn = int((tab["direction"] == "down").sum())
+sel = captured["vol"]
+print(f"[7] volcano: {len(tab)} features · up={nup} down={ndn} · "
+      f"selected={None if sel is None else len(sel)}")
+assert nup + ndn == 0 or sel is not None
+# the contrast's log2FC must equal the difference of the group means
+import numpy as _np
+ga = vol._levels[vol.group_a]; gb = vol._levels[vol.group_b]
+mn = {m.name: _np.asarray(t_stats.X[:, i], float)
+      for i, m in enumerate(t_stats.domain.attributes)}
+assert _np.allclose(tab["log2FC"].to_numpy(float), mn[f"mean_{ga}"] - mn[f"mean_{gb}"],
+                    atol=1e-12)
+
 print("\nALL END-TO-END CHECKS PASSED — 97/97 features match ground truth via widgets.")

@@ -11,6 +11,8 @@ Feature Table CSV ──> Preprocess ──> [Filter] ──> Univariate Stats �
  (2-header, ;)       (Sum-Norm,       (QC)         (ANOVA / Welch /     (Top-N,
                        log2, Imputation,             Kruskal + BH-FDR     Ward cluster,
                        Autoscale/Pareto)             + log2FC + means)     PNG/SVG export)
+                                                                           └─> Volcano
+                                                                              (log2FC vs -log10 FDR)
 ```
 
 ## Widgets (category *Metabo Weller*)
@@ -21,6 +23,7 @@ Feature Table CSV ──> Preprocess ──> [Filter] ──> Univariate Stats �
 | Metabo Preprocess | Optional imputation (min / k-NN) → sum-normalisation → log2 → autoscale (z) / Pareto |
 | Metabo Feature Filter | Drop features by missing fraction, zero variance, constant, or below-detection threshold |
 | Metabo Univariate Stats | One-way ANOVA, Welch two-sample t-test, or Kruskal-Wallis per feature + Benjamini-Hochberg FDR + log2FC + group means |
+| Metabo Volcano | Volcano plot (log2FC vs. −log10 FDR) for a chosen two-group contrast from the results; FDR/|log2FC| thresholds, direction colours, top-N labels, PNG/SVG export; emits the significant features |
 | Metabo Heatmap | Top-N features by p, Ward/Euclidean row clustering, group bar, PNG/SVG export |
 
 ## Correctness
@@ -30,8 +33,9 @@ The default pipeline (sum-normalise → log2 → autoscale → one-way ANOVA →
 BH-FDR) **reproduces the validated ground truth**
 `analysis_CV/cv_anova_alle_97_features.csv` exactly: **97/97 features** on
 F, p, and FDR (max abs diff < 5e-5). Reproduce with `_test_core.py`
-(core) and `_test_e2e.py` (all five widgets, offscreen) — both run against the
-Dropbox ground truth and print 97/97.
+(core) and `_test_e2e.py` (all six widgets, offscreen) — both run against the
+Dropbox ground truth and print 97/97. The volcano contrast is checked to equal
+the Welch log2FC and the ground-truth `log2FC_ANF_vs_WILD` column.
 
 ## Installation
 
