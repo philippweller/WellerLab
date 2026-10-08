@@ -140,14 +140,14 @@ assert _np.allclose(tab["log2FC"].to_numpy(float), mn[f"mean_{ga}"] - mn[f"mean_
 # ---- 7) volcano point selection -> per-group box plot -------------------
 vol.set_data(t_pre)
 assert not vol.Warning.need_data.is_shown()
+vol.canvas.draw()                     # real draw so the data transform is valid
 
+def click(vol, i):
+    """Simulate a left click on feature i (as PlotCanvas.on_click does)."""
+    x, y = vol._sc.get_offsets()[i]
+    vol._select_at(vol._ax, x, y)
 
-class _Pick:
-    def __init__(self, artist, ind):
-        self.artist, self.ind = artist, ind
-
-
-vol._on_pick(_Pick(vol._sc, [0]))
+click(vol, 0)
 assert vol._selected == [str(vol._feat[0])], vol._selected
 fv = captured["vol_fv"]
 assert fv is not None and len(fv) == len(t_pre)
@@ -155,7 +155,7 @@ assert fv is not None and len(fv) == len(t_pre)
 axes = vol.dist_canvas.fig.axes
 nboxes = len(axes[0].patches) if axes else 0
 assert len(axes) == 1 and nboxes >= 4
-vol._on_pick(_Pick(vol._sc, [1]))
+click(vol, 1)
 assert len(vol._selected) == 1 and vol._selected == [str(vol._feat[1])]
 vol._clear_selection()
 assert vol._selected == [] and captured["vol_fv"] is None
@@ -163,7 +163,7 @@ print(f"[8] selection: pick -> box plot ({nboxes} boxes), "
       f"feature_values rows={len(fv)}, clear OK")
 
 # ---- 8) connecting Data after a selection must refresh the output --------
-vol._on_pick(_Pick(vol._sc, [2]))
+click(vol, 2)
 vol.set_data(None)
 assert captured["vol_fv"] is None
 vol.set_data(t_pre)

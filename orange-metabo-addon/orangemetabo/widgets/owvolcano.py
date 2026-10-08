@@ -76,6 +76,9 @@ class OWVolcano(widget.OWWidget):
         self._levels = []          # groups from the results (mean_*)
         self._volcano = None
         self._source = None        # 'results' | 'data' | None
+        self._sc = None            # the volcano ScatterPath (for selection)
+        self._ax = None            # its axes
+        self._new_view = True      # next draw defines the home view
         self._feat = np.array([])  # feature names in scatter order
         self._selected = []        # clicked feature names
 
@@ -104,9 +107,11 @@ class OWVolcano(widget.OWWidget):
         self.canvas = PlotCanvas((8, 5))
         box2.layout().addWidget(self.canvas)
         attach_toolbar(box2, self.canvas, self)
-        self.canvas.mpl_connect("pick_event", self._on_pick)
-        gui.button(box2, self, "Export PNG…", callback=self._export_png)
-        gui.button(box2, self, "Export SVG…", callback=self._export_svg)
+        self.canvas.on_click = self._select_at
+        row = gui.hBox(box2)
+        gui.button(row, self, "Reset view", callback=self._reset_views)
+        gui.button(row, self, "Export PNG…", callback=self._export_png)
+        gui.button(row, self, "Export SVG…", callback=self._export_svg)
 
         box3 = gui.vBox(None, "Distribution of selected feature")
         self.dist_canvas = PlotCanvas((8, 3))
@@ -126,6 +131,7 @@ class OWVolcano(widget.OWWidget):
     @Inputs.results
     def set_results(self, results):
         self.results = results
+        self._new_view = True
         self._refresh_levels()
         # drop selections that no longer exist
         if results is not None:
@@ -138,6 +144,7 @@ class OWVolcano(widget.OWWidget):
     @Inputs.data
     def set_data(self, data):
         self.data = data
+        self._new_view = True
         self._refresh_levels()
         self._populate_combos()
         self._redraw()
@@ -267,6 +274,8 @@ class OWVolcano(widget.OWWidget):
             ax.axis("off")
             self.canvas.draw_idle()
             self._volcano = None
+            self._sc = None
+            self._ax = None
             self._feat = np.array([])
             self.information()
             self.commit.now() if self.auto_commit else self.commit.deferred()
@@ -280,12 +289,13 @@ class OWVolcano(widget.OWWidget):
         self._feat = tab["Feature"].to_numpy()
 
         ax = self.fig.add_subplot(111)
-        # one scatter so a picked point maps directly to a feature index
+        self._ax = ax
+        # one scatter so a clicked point maps directly to a feature index
         colours = np.where(d == "ns", NS_COLOUR,
                            np.where(d == "up", UP_COLOUR, DOWN_COLOUR))
         sizes = np.where(d == "ns", 16, 28)
         self._sc = ax.scatter(lfc, neg, s=sizes, c=list(colours),
-                              edgecolors="none", picker=6)
+                              edgecolors="none", clip_on=False)
         # highlight the selected features on top
         if self._selected:
             mask = np.isin(self._feat, self._selected)
@@ -318,6 +328,8 @@ class OWVolcano(widget.OWWidget):
                             framealpha=0.9))
         ax.grid(alpha=0.2)
         self.fig.tight_layout()
+        self.canvas.after_draw(ax, new_data=self._new_view)
+        self._new_view = False
         self.canvas.draw_idle()
 
         nup, ndn = int((d == "up").sum()), int((d == "down").sum())
@@ -333,13 +345,16 @@ class OWVolcano(widget.OWWidget):
         self.commit.now() if self.auto_commit else self.commit.deferred()
         self._draw_dist()
 
-    # ------------------------------------------------------------------ pick
-    def _on_pick(self, event):
-        if event.artist is not self._sc or not getattr(event, "ind", None):
+    # -------------------------------------------------------------- selection
+    def _select_at(self, ax, xdata, ydata):
+        """Left click on the volcano: select the feature nearest the cursor."""
+        if self._sc is None or len(self._feat) == 0:
             return
-        feat = str(self._feat[event.ind[0]])       # topmost picked point
+        i = self.canvas.nearest_point(ax, xdata, ydata, self._sc.get_offsets())
+        if i is None:
+            return                                  # clicked empty space
+        feat = str(self._feat[i])
         from AnyQt.QtWidgets import QApplication
-        from AnyQt.QtCore import Qt
         additive = bool(QApplication.keyboardModifiers() & Qt.ShiftModifier)
         if additive:
             self._selected = ([f for f in self._selected if f != feat]
@@ -348,6 +363,10 @@ class OWVolcano(widget.OWWidget):
         else:
             self._selected = [] if self._selected == [feat] else [feat]
         self._redraw()
+
+    def _reset_views(self):
+        self.canvas.reset_view()
+        self.dist_canvas.reset_view()
 
     def _clear_selection(self):
         self._selected = []

@@ -49,16 +49,25 @@ the Welch log2FC and the ground-truth `log2FC_ANF_vs_WILD` column.
 The plot widgets (Metabo Volcano, Metabo Heatmap) behave like any Orange plot
 widget:
 
-- **Zoom / pan / home / save** via the matplotlib navigation toolbar above each
-  canvas; **wheel over the plot zooms around the cursor**.
-- The **volcano legend is draggable** (grab and move it).
-- The volcano/box-plot split has a **draggable divider**.
+- **Wheel over the plot zooms** around the cursor; **drag with the left button
+  pans** — no mode to switch on first.
+- **”Reset view”** button restores the automatic view; the matplotlib toolbar
+  above each canvas also offers home / zoom-rect / save.
+- **Your zoom/pan survives redraws** (changing a threshold, selecting a point,
+  …). A plain matplotlib canvas would autoscale on every draw and silently drop
+  the view — `PlotCanvas.after_draw()` prevents that.
+- **Points are clickable at the edges**: selection picks the *nearest* feature
+  within a 12 px radius (an edge point like a max-log2FC hit is no longer
+  glued to the axis spine / unclickable).
+- The **volcano legend is draggable**; the volcano/box-plot split has a
+  **draggable divider**.
 - Orange's **Save graph / copy-to-clipboard / report** entries work
   (`graph_name` is set), and the widget window is resizable.
 
-> Implementation: `orangemetabo/widgets/_plot.py` (`PlotCanvas`, wheel zoom,
-> toolbar, draggable legend). Orange's own plots are pyqtgraph based and get
-> this for free; the Metabo plots are matplotlib, hence the helper.
+> Implementation: `orangemetabo/widgets/_plot.py` (`PlotCanvas`: wheel zoom,
+> drag-pan, click selection, view preservation, reset; `attach_toolbar`,
+> `draggable`). Orange's own plots are pyqtgraph based and get this for free;
+> the Metabo plots are matplotlib, hence the helper.
 
 ## Installation
 

@@ -55,6 +55,7 @@ class OWMetaboHeatmap(widget.OWWidget):
         super().__init__()
         self.data = None
         self.results = None
+        self._new_view = True
 
         box = gui.widgetBox(self.controlArea, "Display")
         gui.spin(box, self, "top_n", 1, 500, label="Top N features:",
@@ -69,17 +70,21 @@ class OWMetaboHeatmap(widget.OWWidget):
         box2 = gui.vBox(self.mainArea, "Heatmap")
         box2.layout().addWidget(self.canvas)
         attach_toolbar(box2, self.canvas, self)
-        gui.button(box2, self, "Export PNG…", callback=self._export_png)
-        gui.button(box2, self, "Export SVG…", callback=self._export_svg)
+        row = gui.hBox(box2)
+        gui.button(row, self, "Reset view", callback=self.canvas.reset_view)
+        gui.button(row, self, "Export PNG…", callback=self._export_png)
+        gui.button(row, self, "Export SVG…", callback=self._export_svg)
 
     @Inputs.data
     def set_data(self, data):
         self.data = data
+        self._new_view = True
         self._draw()
 
     @Inputs.results
     def set_results(self, results):
         self.results = results
+        self._new_view = True
         self._draw()
 
     # ------------------------------------------------------------------ data
@@ -200,6 +205,8 @@ class OWMetaboHeatmap(widget.OWWidget):
         self.fig.suptitle(
             f"Top {nR} features (Ward cluster, ±{self.vlim:g})", fontsize=10)
         self._built = built
+        self.canvas.after_draw(ax, new_data=self._new_view)
+        self._new_view = False
         self.canvas.draw_idle()
         self._send_output(Z, top_feats, sample_names, groups)
 
