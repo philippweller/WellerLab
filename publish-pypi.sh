@@ -40,6 +40,18 @@ subdir_of() {
 TEST=0
 if [[ "${1:-}" == "--test" ]]; then TEST=1; shift; fi
 
+# Credentials come from TWINE_* env vars OR a readable ~/.pypirc (the doc's promise).
+# $1 = index section name (pypi | testpypi).
+has_creds() {
+  [[ -n "${TWINE_USERNAME:-}" && -n "${TWINE_PASSWORD:-}" ]] && return 0
+  [[ -r "$HOME/.pypirc" ]] || return 1
+  "$ORANGEPY" - "$1" "$HOME/.pypirc" <<'PY'
+import configparser, sys
+c = configparser.ConfigParser(); c.read(sys.argv[2])
+sys.exit(0 if c.has_option(sys.argv[1], "password") else 1)
+PY
+}
+
 PKGS=()
 if [[ $# -gt 0 ]]; then
   for p in "$@"; do
@@ -77,16 +89,17 @@ echo
 echo "==> Artefacts in $OUT:"
 ls -1 "$OUT"/*.whl "$OUT"/*.tar.gz
 
-if [[ -z "${TWINE_USERNAME:-}" || -z "${TWINE_PASSWORD:-}" ]]; then
+INDEX=pypi; [[ $TEST -eq 1 ]] && INDEX=testpypi
+if ! has_creds "$INDEX"; then
   echo
-  echo "!! No TWINE creds set. Publish with:"
-  echo "   export TWINE_USERNAME=__token__"
-  echo "   export TWINE_PASSWORD=your-pypi-api-token"
+  echo "!! No credentials for '$INDEX' (no TWINE_* env vars, no [$INDEX] in ~/.pypirc)."
+  echo "   Either: export TWINE_USERNAME=__token__  export TWINE_PASSWORD=pypi-..."
   if [[ $TEST -eq 1 ]]; then
-    echo "   twine upload --repository testpypi $OUT/*.whl $OUT/*.tar.gz"
+    echo "   Or add a [testpypi] password to ~/.pypirc (token from test.pypi.org)."
   else
-    echo "   twine upload \"$OUT\"/*.whl \"$OUT\"/*.tar.gz"
+    echo "   Or add a [pypi] password to ~/.pypirc (chmod 600)."
   fi
+  echo "   Upload target: $OUT/*.whl $OUT/*.tar.gz"
   exit 0
 fi
 
