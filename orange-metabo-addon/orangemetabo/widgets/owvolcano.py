@@ -114,6 +114,8 @@ class OWVolcano(widget.OWWidget):
         self.dist_canvas = _Canvas((8, 3))
         box3.layout().addWidget(self.dist_canvas)
 
+        self._redraw()          # draw the initial hint (no results yet)
+
     # ------------------------------------------------------------------ input
     @Inputs.results
     def set_results(self, results):
@@ -130,9 +132,7 @@ class OWVolcano(widget.OWWidget):
     @Inputs.data
     def set_data(self, data):
         self.data = data
-        self._draw_dist()
-        # refresh Feature Values (a selection may predate the data connection)
-        self.commit.now() if self.auto_commit else self.commit.deferred()
+        self._redraw()          # keeps the hint / refreshes Feature Values
 
     @staticmethod
     def _feat_meta(results):
@@ -201,9 +201,12 @@ class OWVolcano(widget.OWWidget):
         self.fig.clear()
         if built is None:
             ax = self.fig.add_subplot(111)
-            ax.text(0.5, 0.5, "Waiting for results with per-group means\n"
-                              "(Metabo Univariate Stats)…",
-                    ha="center", va="center", fontsize=10)
+            msg = "Connect the Results output of “Metabo Univariate Stats”\n" \
+                  "(its per-group means define the contrast)."
+            if self.data is not None and len(self._groups_of_data()[1]) >= 2:
+                msg += "\n\n(Only Data is connected: add the Univariate\n" \
+                       "Stats widget between Preprocess and Volcano.)"
+            ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=10)
             ax.axis("off")
             self.canvas.draw_idle()
             self._volcano = None

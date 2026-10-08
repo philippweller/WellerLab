@@ -113,6 +113,8 @@ assert built is not None and built[0].shape[0] == 20
 
 # ---- 6) volcano ---------------------------------------------------------
 from orangemetabo.widgets.owvolcano import OWVolcano
+fresh = OWVolcano()          # a fresh widget must show a hint, not a blank plot
+assert fresh.canvas.fig.axes and fresh.canvas.fig.axes[0].texts
 vol = OWVolcano()
 cap("vol", vol, "selected")
 cap("vol_fv", vol, "feature_values")
