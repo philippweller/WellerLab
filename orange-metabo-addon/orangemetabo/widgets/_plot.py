@@ -57,7 +57,13 @@ class PlotCanvas(FigureCanvasQTAgg):
             axis.set_ylim(*self.view[1])
 
     def reset_view(self):
-        """Back to the automatic (home) view."""
+        """Back to the automatic (home) view; also clears any toolbar mode."""
+        if self.toolbar is not None:
+            self.toolbar.mode = ""
+            try:
+                self.toolbar._update_buttons_checked()
+            except Exception:
+                pass
         self.view = None
         if self.home is not None and self.main_axes is not None:
             self.main_axes.set_xlim(*self.home[0])
@@ -74,9 +80,6 @@ class PlotCanvas(FigureCanvasQTAgg):
             if ax.bbox.contains(x, y):
                 return ax
         return None
-
-    def _toolbar_idle(self):
-        return not (self.toolbar is not None and getattr(self.toolbar, "mode", ""))
 
     @staticmethod
     def _steps(event):
@@ -98,7 +101,7 @@ class PlotCanvas(FigureCanvasQTAgg):
         x, y = self.mouseEventCoords(event)
         ax = self._axes_at(x, y)
         steps = self._steps(event)
-        if ax is None or not steps or not self._toolbar_idle():
+        if ax is None or not steps:
             super().wheelEvent(event)
             return
         self.zoom_at(ax, x, y, steps)
@@ -107,7 +110,7 @@ class PlotCanvas(FigureCanvasQTAgg):
 
     # ------------------------------------------------- pan drag / click sel
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton and self._toolbar_idle():
+        if event.button() == Qt.LeftButton:
             x, y = self.mouseEventCoords(event)
             ax = self._axes_at(x, y)
             if ax is not None:
@@ -136,8 +139,7 @@ class PlotCanvas(FigureCanvasQTAgg):
     def mouseReleaseEvent(self, event):
         press, self._press = self._press, None
         if (event.button() == Qt.LeftButton and press is not None
-                and not press[5] and self.on_click is not None
-                and self._toolbar_idle()):
+                and not press[5] and self.on_click is not None):
             ax = press[2]
             x, y = self.mouseEventCoords(event)
             self._remember(ax)
@@ -158,8 +160,28 @@ class PlotCanvas(FigureCanvasQTAgg):
 
 
 def attach_toolbar(box, canvas, parent):
-    """Add a matplotlib navigation toolbar (save/home/zoom/pan) to `box`."""
+    """Add a slim matplotlib toolbar to `box`: Home (= reset view) and Save.
+
+    The pan/zoom/back/forward/subplots actions are removed: panning and zooming
+    are done directly on the canvas (`PlotCanvas`), and matplotlib's modal
+    tools would swallow the left button, so point selection became impossible
+    until the user figured out how to leave the mode again.
+    """
     toolbar = NavigationToolbar2QT(canvas, parent)
+    acts = getattr(toolbar, "_actions", {})
+    for key in ("back", "forward", "pan", "zoom",
+                "configure_subplots", "edit_parameters"):
+        action = acts.get(key)
+        if action is not None:
+            toolbar.removeAction(action)
+    home = acts.get("home")
+    if home is not None:
+        home.setToolTip("Reset view")
+        try:
+            home.triggered.disconnect()
+        except (TypeError, RuntimeError):
+            pass
+        home.triggered.connect(lambda *_: canvas.reset_view())
     box.layout().addWidget(toolbar)
     canvas.toolbar = toolbar
     return toolbar

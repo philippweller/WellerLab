@@ -51,23 +51,28 @@ widget:
 
 - **Wheel over the plot zooms** around the cursor; **drag with the left button
   pans** — no mode to switch on first.
-- **”Reset view”** button restores the automatic view; the matplotlib toolbar
-  above each canvas also offers home / zoom-rect / save.
+- **”Reset view”** button restores the automatic view; the toolbar above each
+  canvas is deliberately slim — **Home (= reset view)** and **Save** only. The
+  modal pan/zoom/back/forward tools are removed because they swallow the left
+  button, which made point selection impossible until you found your way out of
+  the mode again; panning/zooming are direct gestures instead.
 - **Your zoom/pan survives redraws** (changing a threshold, selecting a point,
   …). A plain matplotlib canvas would autoscale on every draw and silently drop
   the view — `PlotCanvas.after_draw()` prevents that.
-- **Points are clickable at the edges**: selection picks the *nearest* feature
-  within a 12 px radius (an edge point like a max-log2FC hit is no longer
-  glued to the axis spine / unclickable).
+- **Points are clickable at the edges** and selection works in every state:
+  it picks the *nearest* feature within a 12 px radius (an edge point like a
+  max-log2FC hit is no longer glued to the axis spine / unclickable), and is
+  not gated on the toolbar mode.
 - The **volcano legend is draggable**; the volcano/box-plot split has a
   **draggable divider**.
 - Orange's **Save graph / copy-to-clipboard / report** entries work
   (`graph_name` is set), and the widget window is resizable.
 
 > Implementation: `orangemetabo/widgets/_plot.py` (`PlotCanvas`: wheel zoom,
-> drag-pan, click selection, view preservation, reset; `attach_toolbar`,
-> `draggable`). Orange's own plots are pyqtgraph based and get this for free;
-> the Metabo plots are matplotlib, hence the helper.
+> drag-pan, click selection, view preservation, reset; `attach_toolbar` (slim
+> Home+Save, Home wired to reset), `draggable`). Orange's own plots are
+> pyqtgraph based and get this for free; the Metabo plots are matplotlib, hence
+> the helper.
 
 ## Installation
 
