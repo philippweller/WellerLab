@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name="orangeplsda",
-    version="0.1.0",
+    version="0.1.1",
     description="PLS-DA & OPLS-DA with S-Plot — classification, "
                 "biomarker discovery, and orthogonal signal correction "
                 "for Orange3",

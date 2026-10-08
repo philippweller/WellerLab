@@ -44,6 +44,22 @@ the Welch log2FC and the ground-truth `log2FC_ANF_vs_WILD` column.
 > autoscaled/Pareto data the x-axis is a scaled mean difference (the p-values
 > are unaffected, since the t-test is scale-invariant per feature).
 
+## Plot interaction
+
+The plot widgets (Metabo Volcano, Metabo Heatmap) behave like any Orange plot
+widget:
+
+- **Zoom / pan / home / save** via the matplotlib navigation toolbar above each
+  canvas; **wheel over the plot zooms around the cursor**.
+- The **volcano legend is draggable** (grab and move it).
+- The volcano/box-plot split has a **draggable divider**.
+- Orange's **Save graph / copy-to-clipboard / report** entries work
+  (`graph_name` is set), and the widget window is resizable.
+
+> Implementation: `orangemetabo/widgets/_plot.py` (`PlotCanvas`, wheel zoom,
+> toolbar, draggable legend). Orange's own plots are pyqtgraph based and get
+> this for free; the Metabo plots are matplotlib, hence the helper.
+
 ## Installation
 
 ```bash

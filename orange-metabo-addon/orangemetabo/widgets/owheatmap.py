@@ -14,10 +14,10 @@ from Orange.data import Table
 from Orange.widgets import widget, gui
 from Orange.widgets.settings import Setting
 from Orange.widgets.widget import Input, Output
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
-from scipy.cluster.hierarchy import linkage, dendrogram
 from matplotlib.colors import LinearSegmentedColormap
+from scipy.cluster.hierarchy import linkage, dendrogram
+
+from ._plot import PlotCanvas, attach_toolbar
 
 CMAP = LinearSegmentedColormap.from_list(
     "rdbu_r",
@@ -29,13 +29,6 @@ GROUP_COLORS = [
 ]
 
 
-class _Canvas(FigureCanvasQTAgg):
-    """Matplotlib canvas as a Qt widget (FigureCanvasQTAgg IS a QWidget)."""
-    def __init__(self):
-        self.fig = Figure(figsize=(9, 7), dpi=100)
-        super().__init__(self.fig)
-
-
 class OWMetaboHeatmap(widget.OWWidget):
     name = "Metabo Heatmap"
     description = ("Top-N biomarker heatmap with Ward row clustering and a "
@@ -45,6 +38,7 @@ class OWMetaboHeatmap(widget.OWWidget):
     keywords = "heatmap, clustering, ward, biomarker, top-n"
 
     resizing_enabled = True
+    graph_name = "canvas"      # enables Orange's Save graph / clipboard / report
 
     class Inputs:
         data = Input("Data", Table)
@@ -71,11 +65,12 @@ class OWMetaboHeatmap(widget.OWWidget):
                        label="Colour scale (±):", callback=self._draw, decimals=1)
         gui.rubber(self.controlArea)
 
-        self.canvas = _Canvas()
+        self.canvas = PlotCanvas((9, 7))
         box2 = gui.vBox(self.mainArea, "Heatmap")
         box2.layout().addWidget(self.canvas)
-        gui.button(self.mainArea, self, "Export PNG…", callback=self._export_png)
-        gui.button(self.mainArea, self, "Export SVG…", callback=self._export_svg)
+        attach_toolbar(box2, self.canvas, self)
+        gui.button(box2, self, "Export PNG…", callback=self._export_png)
+        gui.button(box2, self, "Export SVG…", callback=self._export_svg)
 
     @Inputs.data
     def set_data(self, data):

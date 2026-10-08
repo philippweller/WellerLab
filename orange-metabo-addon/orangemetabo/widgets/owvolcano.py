@@ -20,28 +20,23 @@ per-sample values of the selected feature(s).
 import numpy as np
 import pandas as pd
 
+from AnyQt.QtCore import Qt
+from AnyQt.QtWidgets import QSplitter
+
 from Orange.data import Table, Domain, ContinuousVariable, StringVariable
 from Orange.widgets import widget, gui
 from Orange.widgets.settings import Setting
 from Orange.widgets.widget import Input, Output, Msg
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
-from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 
 from .. import metabo_core as mc
 from .owheatmap import GROUP_COLORS
+from ._plot import PlotCanvas, attach_toolbar, draggable
 
 NS_COLOUR = "#9e9e9e"
 UP_COLOUR = "#d62728"
 DOWN_COLOUR = "#1f77b4"
 MAX_BOXPLOTS = 6                  # cap the selected-feature grid
-
-
-class _Canvas(FigureCanvasQTAgg):
-    """Matplotlib canvas as a Qt widget (FigureCanvasQTAgg IS a QWidget)."""
-    def __init__(self, figsize):
-        self.fig = Figure(figsize=figsize, dpi=100)
-        super().__init__(self.fig)
 
 
 class OWVolcano(widget.OWWidget):
@@ -54,6 +49,7 @@ class OWVolcano(widget.OWWidget):
     keywords = "volcano, fold change, fdr, contrast, biomarker, boxplot, selection"
 
     resizing_enabled = True
+    graph_name = "canvas"      # enables Orange's Save graph / clipboard / report
 
     class Inputs:
         results = Input("Results", Table)
@@ -104,16 +100,25 @@ class OWVolcano(widget.OWWidget):
         gui.rubber(self.controlArea)
         gui.auto_apply(self.buttonsArea, self, "auto_commit")
 
-        box2 = gui.vBox(self.mainArea, "Volcano")
-        self.canvas = _Canvas((8, 5))
+        box2 = gui.vBox(None, "Volcano")
+        self.canvas = PlotCanvas((8, 5))
         box2.layout().addWidget(self.canvas)
+        attach_toolbar(box2, self.canvas, self)
         self.canvas.mpl_connect("pick_event", self._on_pick)
-        gui.button(self.mainArea, self, "Export PNG…", callback=self._export_png)
-        gui.button(self.mainArea, self, "Export SVG…", callback=self._export_svg)
+        gui.button(box2, self, "Export PNG…", callback=self._export_png)
+        gui.button(box2, self, "Export SVG…", callback=self._export_svg)
 
-        box3 = gui.vBox(self.mainArea, "Distribution of selected feature")
-        self.dist_canvas = _Canvas((8, 3))
+        box3 = gui.vBox(None, "Distribution of selected feature")
+        self.dist_canvas = PlotCanvas((8, 3))
         box3.layout().addWidget(self.dist_canvas)
+        attach_toolbar(box3, self.dist_canvas, self)
+
+        # draggable divider between the volcano and the box-plot panel
+        splitter = QSplitter(Qt.Vertical)
+        splitter.addWidget(box2)
+        splitter.addWidget(box3)
+        splitter.setSizes([520, 300])
+        self.mainArea.layout().addWidget(splitter)
 
         self._redraw()          # draw the initial hint (no results yet)
 
@@ -309,7 +314,8 @@ class OWVolcano(widget.OWWidget):
             Line2D([], [], marker="o", ls="", color=DOWN_COLOUR,
                    label=f"up in {gb} ({int((d == 'down').sum())})"),
         ]
-        ax.legend(handles=handles, fontsize=7, loc="upper left", framealpha=0.9)
+        draggable(ax.legend(handles=handles, fontsize=7, loc="upper left",
+                            framealpha=0.9))
         ax.grid(alpha=0.2)
         self.fig.tight_layout()
         self.canvas.draw_idle()

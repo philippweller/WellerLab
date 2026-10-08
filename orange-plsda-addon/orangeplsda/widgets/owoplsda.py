@@ -65,6 +65,7 @@ class OWOPLSDA(OWBaseLearner):
 
     want_main_area = True
     resizing_enabled = True
+    graph_name = "plot_widget"   # enables Orange's Save graph / clipboard / report
 
     def __init__(self):
         super().__init__()
