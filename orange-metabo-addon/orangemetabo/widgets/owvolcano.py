@@ -79,6 +79,7 @@ class OWVolcano(widget.OWWidget):
         self.data = None
         self._levels = []          # groups from the results (mean_*)
         self._volcano = None
+        self._source = None        # 'results' | 'data' | None
         self._feat = np.array([])  # feature names in scatter order
         self._selected = []        # clicked feature names
 
@@ -120,7 +121,7 @@ class OWVolcano(widget.OWWidget):
     @Inputs.results
     def set_results(self, results):
         self.results = results
-        self._levels = self._read_levels(results)
+        self._refresh_levels()
         # drop selections that no longer exist
         if results is not None:
             names = set(str(results.metas[i, self._feat_meta(results)])
@@ -132,7 +133,22 @@ class OWVolcano(widget.OWWidget):
     @Inputs.data
     def set_data(self, data):
         self.data = data
-        self._redraw()          # keeps the hint / refreshes Feature Values
+        self._refresh_levels()
+        self._populate_combos()
+        self._redraw()
+
+    def _refresh_levels(self):
+        """Groups for the contrast: the results' mean_* columns if present,
+        otherwise the Data's group column."""
+        lv = self._read_levels(self.results)
+        if not lv:
+            _, lv = self._groups_of_data()
+        self._levels = lv
+
+    def _sel_groups(self):
+        n = len(self._levels)
+        return (self._levels[min(self.group_a, n - 1)],
+                self._levels[min(self.group_b, n - 1)])
 
     @staticmethod
     def _feat_meta(results):
@@ -174,23 +190,60 @@ class OWVolcano(widget.OWWidget):
             self.b_combo.blockSignals(False)
 
     # ------------------------------------------------------------------ core
-    def _table(self):
-        """Return (volcano DataFrame, group_a name, group_b name) or None."""
-        if self.results is None or len(self._levels) < 2:
-            return None
+    def _results_dataframe(self):
+        """DataFrame built from the results Table (Feature + attributes)."""
         res = self.results
-        fcol = self._feat_meta(res)
+        fcol = self._feat_meta(res) if res is not None else None
         if fcol is None:
             return None
-        data = {"Feature": [str(res.metas[i, fcol]) for i in range(len(res))]}
+        d = {"Feature": [str(res.metas[i, fcol]) for i in range(len(res))]}
         for i, a in enumerate(res.domain.attributes):
-            data[a.name] = np.asarray(res.X[:, i], dtype=float)
-        ga = self._levels[min(self.group_a, len(self._levels) - 1)]
-        gb = self._levels[min(self.group_b, len(self._levels) - 1)]
+            d[a.name] = np.asarray(res.X[:, i], dtype=float)
+        return pd.DataFrame(d)
+
+    def _computed_dataframe(self, ga, gb):
+        """Contrast computed from the Data input: Welch two-sample t-test of
+        ga vs gb per feature + Benjamini-Hochberg FDR, plus the two group means.
+        Returns None when Data has no usable group column."""
+        if self.data is None or "group" not in self.data.domain:
+            return None
+        groups, levels = self._groups_of_data()
+        if ga not in levels or gb not in levels:
+            return None
+        feat = [a.name for a in self.data.domain.attributes]
+        X_f = np.asarray(self.data.X, dtype=float).T          # features x samples
+        df, _ = mc.univariate(X_f, groups, "welch", base=gb, treats=[ga],
+                              feature_names=feat)
+        return mc.add_group_means(df, X_f, groups, [ga, gb], feature_names=feat)
+
+    def _table(self):
+        """Return (volcano DataFrame, group_a, group_b) or None.
+
+        Uses the Metabo Univariate Stats results when they are connected;
+        otherwise the contrast (Welch t-test + BH-FDR over all features) is
+        computed from the Data input, so Preprocess -> Volcano already plots.
+        Sets self._source to 'results' / 'data' / None.
+        """
+        self._source = None
+        if len(self._levels) < 2:
+            return None
+        ga, gb = self._sel_groups()
+        if ga == gb:
+            return None
+        df = self._results_dataframe()
+        self._source = "results"
+        if df is None or f"mean_{ga}" not in df.columns \
+                or f"mean_{gb}" not in df.columns:
+            df = self._computed_dataframe(ga, gb)
+            self._source = "data"
+        if df is None:
+            self._source = None
+            return None
         try:
-            tab = mc.volcano_table(pd.DataFrame(data), ga, gb,
-                                   alpha=self.fdr_alpha, fc=self.fc_thresh)
+            tab = mc.volcano_table(df, ga, gb, alpha=self.fdr_alpha,
+                                   fc=self.fc_thresh)
         except ValueError:
+            self._source = None
             return None
         return tab, ga, gb
 
@@ -201,11 +254,10 @@ class OWVolcano(widget.OWWidget):
         self.fig.clear()
         if built is None:
             ax = self.fig.add_subplot(111)
-            msg = "Connect the Results output of “Metabo Univariate Stats”\n" \
-                  "(its per-group means define the contrast)."
-            if self.data is not None and len(self._groups_of_data()[1]) >= 2:
-                msg += "\n\n(Only Data is connected: add the Univariate\n" \
-                       "Stats widget between Preprocess and Volcano.)"
+            msg = ("Connect the Data output of “Metabo Preprocess” (its group\n"
+                   "column and feature values are enough to compute the\n"
+                   "contrast), or the Results output of “Metabo Univariate\n"
+                   "Stats” for an ANOVA/Kruskal-based analysis.")
             ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=10)
             ax.axis("off")
             self.canvas.draw_idle()
@@ -263,9 +315,14 @@ class OWVolcano(widget.OWWidget):
         self.canvas.draw_idle()
 
         nup, ndn = int((d == "up").sum()), int((d == "down").sum())
+        src = {"data": "computed from Data (Welch + BH-FDR; fold change in the "
+                       "data's space — feed sum+log2, not autoscaled, for a "
+                       "true log2FC)",
+               "results": "from Univariate Stats"}.get(self._source or "", "")
         self.information(
             f"{len(tab)} features · {ga} vs {gb} · {nup} up, {ndn} down "
-            f"at FDR<{self.fdr_alpha:g}, |log2FC|≥{self.fc_thresh:g}")
+            f"at FDR<{self.fdr_alpha:g}, |log2FC|≥{self.fc_thresh:g}"
+            + (f" · {src}" if src else ""))
         self._update_sel_label()
         self.commit.now() if self.auto_commit else self.commit.deferred()
         self._draw_dist()

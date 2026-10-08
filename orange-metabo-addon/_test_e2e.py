@@ -171,4 +171,12 @@ assert captured["vol_fv"] is not None and len(captured["vol_fv"]) == len(t_pre)
 print(f"[9] Data (re)connect refreshes Feature Values "
       f"({len(captured['vol_fv'])} rows) without re-clicking")
 
+# ---- 9) volcano also works from Data alone (no Results connected) -------
+solo = OWVolcano()
+solo.set_data(t_pre)
+assert solo._volcano is not None and len(solo._volcano) == len(t_stats)
+assert solo._source == "data" and set(solo._levels) == set(vol._levels)
+print(f"[10] volcano from Data alone: {len(solo._volcano)} features "
+      f"(source={solo._source}, Welch + BH-FDR)")
+
 print("\nALL END-TO-END CHECKS PASSED — 97/97 features match ground truth via widgets.")
