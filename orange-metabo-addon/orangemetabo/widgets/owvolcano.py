@@ -233,16 +233,12 @@ class OWVolcano(widget.OWWidget):
 
     # ------------------------------------------------------------------ export
     def _export_png(self):
-        from Orange.widgets.utils.filedialogs import SaveFileDialog
-        fd = SaveFileDialog(file_format_filter="PNG (*.png)")
-        if fd.exec_():
-            self.fig.savefig(fd.selectedFiles()[0], dpi=300, facecolor="white")
+        from ._dialogs import save_figure
+        save_figure(self, self.fig, "PNG")
 
     def _export_svg(self):
-        from Orange.widgets.utils.filedialogs import SaveFileDialog
-        fd = SaveFileDialog(file_format_filter="SVG (*.svg)")
-        if fd.exec_():
-            self.fig.savefig(fd.selectedFiles()[0], facecolor="white")
+        from ._dialogs import save_figure
+        save_figure(self, self.fig, "SVG")
 
     def close(self):
         self.Outputs.selected.send(None)

@@ -43,10 +43,14 @@ cap("filt", flt, "data")
 cap("stats", uni, "results")
 cap("hm", hm, "heatmap")
 
-# ---- 1) import ---------------------------------------------------------
-# feed the file directly into the widget's internal state, then _load
-imp.file_path = IN_CSV
-imp._load()
+# ---- 1) import (exercise the file dialog, stubbed) ---------------------
+import AnyQt.QtWidgets as _QtW
+_open = _QtW.QFileDialog.getOpenFileName
+_QtW.QFileDialog.getOpenFileName = staticmethod(lambda *a, **k: (IN_CSV, ""))
+try:
+    imp._browse()
+finally:
+    _QtW.QFileDialog.getOpenFileName = _open
 t_import = captured["import"]
 print(f"[2] import: {t_import} shape={t_import.X.shape} "
       f"attrs={len(t_import.domain.attributes)} metas={[m.name for m in t_import.domain.metas]}")

@@ -59,11 +59,10 @@ class OWFeatureImport(widget.OWWidget):
 
     # ------------------------------------------------------------------ file
     def _browse(self):
-        from Orange.widgets.utils.filedialogs import OpenFileDialog
-        fd = OpenFileDialog(
-            file_format_filter="Feature table (*.csv);;All files (*)")
-        if fd.exec_():
-            self.file_path = fd.selectedFiles()[0]
+        from ._dialogs import open_feature_table
+        path = open_feature_table(self, self.file_path)
+        if path:
+            self.file_path = path
             self._load()
 
     def _load(self):
