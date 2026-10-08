@@ -43,5 +43,5 @@ for f in "${FILES[@]}"; do
 done
 [[ $missing -eq 0 ]] || { echo "!! dist-pypi/ unvollständig — erst bauen (publish-pypi.sh) oder Dateien prüfen." >&2; exit 1; }
 
-echo "==> Uploading $((${#FILES[@]})) artefacts to PyPI"
-"$ORANGEPY" -m twine upload "${FILES[@]}"
+echo "==> Uploading $((${#FILES[@]})) artefacts to PyPI (skipping already-uploaded)"
+"$ORANGEPY" -m twine upload --skip-existing "${FILES[@]}"

@@ -105,10 +105,10 @@ fi
 
 if [[ $TEST -eq 1 ]]; then
   echo "==> Publishing to TestPyPI"
-  "$ORANGEPY" -m twine upload --repository testpypi "$OUT"/*.whl "$OUT"/*.tar.gz
+  "$ORANGEPY" -m twine upload --skip-existing --repository testpypi "$OUT"/*.whl "$OUT"/*.tar.gz
 else
   echo "==> Publishing to PyPI"
-  "$ORANGEPY" -m twine upload "$OUT"/*.whl "$OUT"/*.tar.gz
+  "$ORANGEPY" -m twine upload --skip-existing "$OUT"/*.whl "$OUT"/*.tar.gz
 fi
 
 echo "==> Done. Point in the installer/READMEs at PyPI; verify at pypi.org/project/<name>/"
