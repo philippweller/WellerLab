@@ -1,5 +1,7 @@
 # orangemetabo — MetaboAnalyst-Style Statistics for Orange3
 
+**Author:** Philipp Weller (AK Weller) · philipp.weller@googlemail.com
+
 Add-on for **Orange3** that reproduces the **MetaboAnalyst** univariate
 workflow for GC-MS / GC-IMS **feature tables** (Compound Discoverer exports),
 as used in the coffee-fermentation study (AK Weller).

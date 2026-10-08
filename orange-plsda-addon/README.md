@@ -1,5 +1,7 @@
 # orange-plsda-addon
 
+**Autor:** Philipp Weller (AK Weller) · philipp.weller@googlemail.com
+
 PLS-DA & OPLS-DA für **Orange3** — Leistungsstarke Klassifikations-Widgets für
 die multivariate Analyse (Chemometrie, Biomarker-Findung).
 

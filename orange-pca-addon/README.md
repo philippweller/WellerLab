@@ -1,5 +1,7 @@
 # orange-pca-addon — PCA Weller (Chemometrie-PCA für Orange3)
 
+**Autor:** Philipp Weller (AK Weller) · philipp.weller@googlemail.com
+
 Erweitertes PCA-Widget für **Orange3** mit Fokus auf chemometrische
 Anwendungen (NMR, Spektroskopie, Biomarker). Ziel: **mehr Kontrolle über
 Preprocessing und Ausreißer als das eingebaute Orange-PCA-Widget.**

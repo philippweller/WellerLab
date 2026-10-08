@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name="orangepca",
-    version="0.1.1",
+    version="0.1.2",
     description="Chemometrics PCA for Orange3 - preprocessing (autoscale/pareto/center), "
                 "explained variance on axes, and Hotelling T2/Q-residual outlier diagnostics "
                 "with filtering.",

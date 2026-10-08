@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name="orangenmr",
-    version="0.1.0",
+    version="0.1.1",
     description="NMR Preprocessing Widgets for Orange3 — binning, normalization, "
                 "baseline correction, filtering, region exclusion, and alignment",
     long_description=(HERE / "README.md").read_text(encoding="utf-8"),

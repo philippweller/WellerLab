@@ -1,5 +1,7 @@
 # orange-nmr-addon
 
+**Autor:** Philipp Weller (AK Weller) · philipp.weller@googlemail.com
+
 NMR-Preprocessing-Widgets für **Orange3** — für die Verarbeitung von 1D-NMR-
 Spektren (z.B. ¹H) im Rahmen multivariater Analysen (Chemometrie).
 

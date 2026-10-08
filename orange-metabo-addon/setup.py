@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name="orangemetabo",
-    version="0.4.2",
+    version="0.4.3",
     description="MetaboAnalyst-style univariate statistics for "
                 "GC-MS / GC-IMS feature tables in Orange3",
     long_description=(HERE / "README.md").read_text(encoding="utf-8"),
