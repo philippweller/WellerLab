@@ -34,12 +34,28 @@ Erzeugt von `tools/gen_icons.py` im Monorepo.
 
 ## Tests (headless, offscreen)
 
+Kanonischer Befehl — findet Oranges Python selbst und läuft mit *jedem* Python:
+
+```bash
+python3 run_tests.py                     # alle Suiten
+python3 run_tests.py --python /pfad/zum/python
+```
+
+Die drei Suiten einzeln:
+
 ```bash
 PY=/Applications/Orange.app/Contents/MacOS/python
 $PY _test_opls_core.py      # Numerik: R2Y/Q2/VIP/Permutation
 $PY _test_owoplsda.py       # Widget: Schwellen, Farben, Selektion, Ausgänge
 $PY _test_suite.py          # Integration: alle 15 Widgets, Icons, Kategorie
 ```
+
+> **macOS/Apple-Silicon-Falle:** Wird Oranges universeller Interpreter von einem
+> x86_64-Python (Rosetta, z. B. einer Intel-conda-Installation) gestartet, läuft er
+> selbst als x86_64 — dort scheitert der Import von Oranges arm64-only
+> numpy-Extension („you should not try to import numpy from its source
+> directory“). `run_tests.py` umgeht das automatisch mit `arch -arm64`; bei
+> direkten Aufrufen nativ starten oder ebenfalls `arch -arm64` voranstellen.
 
 ## Lizenz
 
