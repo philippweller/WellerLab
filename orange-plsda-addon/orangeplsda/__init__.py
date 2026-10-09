@@ -1,10 +1,29 @@
 """
-orangeplsda - PLS-DA (Partial Least Squares Discriminant Analysis) for Orange3.
+orangeplsda - PLS-DA and OPLS-DA for Orange3.
 
-Provides a classification learner and widget for PLS-DA.
+Kept deliberately minimal (same convention as orangemetabo/__init__.py): the
+learners need Orange, the numerical core (`opls_core`, `plsda_learner` maths)
+does not. Eager imports here would make `import orangeplsda.opls_core` fail
+outside Orange and break headless tests.
 """
 
-from .plsda_learner import PLSDALearner, PLSDAModel
-from .oplsda_learner import OPLSDALearner, OPLSDAModel
+__version__ = "0.2.0"
 
-__all__ = ["PLSDALearner", "PLSDAModel", "OPLSDALearner", "OPLSDAModel"]
+# Lazily resolved public names (PEP 562) - `from orangeplsda import OPLSDALearner`
+# still works, but importing the package no longer requires Orange.
+_LAZY = {
+    "PLSDALearner": (".plsda_learner", "PLSDALearner"),
+    "PLSDAModel": (".plsda_learner", "PLSDAModel"),
+    "OPLSDALearner": (".oplsda_learner", "OPLSDALearner"),
+    "OPLSDAModel": (".oplsda_learner", "OPLSDAModel"),
+}
+
+__all__ = list(_LAZY)
+
+
+def __getattr__(name):
+    if name in _LAZY:
+        import importlib
+        module_name, attr = _LAZY[name]
+        return getattr(importlib.import_module(module_name, __name__), attr)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

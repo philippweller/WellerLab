@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name="orangemetabo",
-    version="0.4.3",
+    version="0.4.4",
     description="MetaboAnalyst-style univariate statistics for "
                 "GC-MS / GC-IMS feature tables in Orange3",
     long_description=(HERE / "README.md").read_text(encoding="utf-8"),
@@ -22,7 +22,7 @@ setup(
     ],
     entry_points={
         "orange.widgets": (
-            "Metabo Weller = orangemetabo.widgets",
+            "Weller Lab = orangemetabo.widgets",
         ),
     },
     package_data={

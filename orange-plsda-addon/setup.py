@@ -5,7 +5,7 @@ HERE = Path(__file__).parent
 
 setup(
     name="orangeplsda",
-    version="0.1.2",
+    version="0.2.0",
     description="PLS-DA & OPLS-DA with S-Plot — classification, "
                 "biomarker discovery, and orthogonal signal correction "
                 "for Orange3",
@@ -22,7 +22,7 @@ setup(
     ],
     entry_points={
         "orange.widgets": (
-            "PLS-DA = orangeplsda.widgets",
+            "Weller Lab = orangeplsda.widgets",
         ),
     },
     package_data={
