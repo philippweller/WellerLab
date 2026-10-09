@@ -35,23 +35,26 @@ MONOREPO = "philippweller/WellerLab"
 BRANCH = "main"
 
 # name -> (subdirectory, import package, widget category line for final hint)
+# The whole suite now ships as ONE distribution ("wellerlab") and registers in
+# Orange under the single category "Weller Lab". The historical keys are kept as
+# aliases to the merged add-on so existing commands keep working; 'all' installs
+# each unique subdirectory once.
+_MERGED = ("orange-wellerlab-addon", "wellerlab",
+           "Weller Lab -> 15 widgets: Metabo (6), PLS-DA/OPLS-DA (2), "
+           "PCA Pro (1), NMR (6)")
 ADDONS = {
-    "plsda": ("orange-plsda-addon", "orangeplsda",
-              "PLS-DA   -> PLS-DA / OPLS-DA"),
-    "pls-da": ("orange-plsda-addon", "orangeplsda",
-               "PLS-DA   -> PLS-DA / OPLS-DA"),
-    "nmr": ("orange-nmr-addon", "orangenmr",
-            "NMR      -> NMR Preprocessing"),
-    "orange-nmr": ("orange-nmr-addon", "orangenmr",
-                   "NMR      -> NMR Preprocessing"),
-    "pca": ("orange-pca-addon", "orangepca",
-            "PCA Weller -> PCA Weller (chemometrics PCA + T2/Q)"),
-    "pca-well": ("orange-pca-addon", "orangepca",
-                 "PCA Weller -> PCA Weller (chemometrics PCA + T2/Q)"),
-    "metabo": ("orange-metabo-addon", "orangemetabo",
-               "Metabo Weller -> Metabo (feature table -> stats -> heatmap)"),
-    "orange-metabo": ("orange-metabo-addon", "orangemetabo",
-                      "Metabo Weller -> Metabo (feature table -> stats -> heatmap)"),
+    "wellerlab": _MERGED,
+    "suite": _MERGED,
+    # legacy aliases -> merged add-on
+    "metabo": _MERGED,
+    "orange-metabo": _MERGED,
+    "plsda": _MERGED,
+    "pls-da": _MERGED,
+    "pca": _MERGED,
+    "pca-well": _MERGED,
+    "pca-pro": _MERGED,
+    "nmr": _MERGED,
+    "orange-nmr": _MERGED,
 }
 
 
@@ -208,8 +211,8 @@ def install_one(exe, subdir, pkg, category, upgrade_no_deps=True):
 
 def main():
     ap = argparse.ArgumentParser(description="Install Orange3 add-ons from the WellerLab monorepo")
-    ap.add_argument("addon", nargs="?", default="plsda",
-                    help="addon key, or 'all' to install the whole suite (default: plsda)")
+    ap.add_argument("addon", nargs="?", default="wellerlab",
+                    help="addon key, or 'all' to install the whole suite (default: wellerlab)")
     ap.add_argument("--all", dest="install_all", action="store_true",
                     help="install the entire WellerLab suite (same as 'all')")
     ap.add_argument("--python", default=None, help="explicit Orange python path")

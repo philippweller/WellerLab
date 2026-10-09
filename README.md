@@ -1,24 +1,31 @@
 # WellerLab
 
 Monorepo für **allen selbstgebauten Tooling rund um Orange3**, das die Gruppe baut.
-Jedes Tool ist ein eigenständig installierbares Paket in einem eigenen Unterordner mit eigenem
-`setup.py`. Ein gemeinsamer, plattformübergreifender Installer installiert jedes Paket direkt
-aus diesem Repo.
+Die Werkzeuge werden als **ein Paket** (`wellerlab`) ausgeliefert und erscheinen in Orange in
+der gemeinsamen Kategorie **Weller Lab**. Ein gemeinsamer, plattformübergreifender Installer
+installiert das Paket direkt aus diesem Repo.
 
 > Hinweis: Dieses Repo ersetzt die früher getrennten Repos `orange-plsda-addon` und
 > `orange-nmr-addon` (archiviert). Die Install-URLs haben sich geändert — siehe unten.
 
 ## 📦 Enthaltene Tools
 
-| Unterordner | Paket | Orange-Kategorie | Beschreibung |
+| Unterordner | Paket | Orange-Kategorie | Widgets |
 |---|---|---|---|
-| `orange-plsda-addon/` | `orangeplsda` | **PLS-DA** | PLS-DA + OPLS-DA-Klassifikation (inkl. S-Plot) |
-| `orange-nmr-addon/` | `orangenmr` | **NMR Preprocessing** | NMR-Binning, -Normalisierung, -Baseline, -Filter, Regionen, Alignment |
-| `orange-pca-addon/` | `orangepca` | **PCA Weller** | Chemometrie-PCA: Scaling, Varianz % an Achsen, Hotelling-T2/Q-Ausreißer-Diagnostik + Filter |
-| `orange-metabo-addon/` | `orangemetabo` | **Metabo Weller** | MetaboAnalyst-Stil: Feature-Table-Import, Preprocessing, Filter, univariate Stats (ANOVA/Welch/KW + BH-FDR), Heatmap |
+| `orange-wellerlab-addon/` | `wellerlab` | **Weller Lab** | alle 15 (siehe unten) |
 
-Neue Tools kommen als eigener Unterordner mit eigenem `setup.py` dazu (Muster siehe
-`orange-plsda-addon/`). Danach einen Eintrag in `ADDONS` in `orange-install.py` ergänzen.
+Das Paket `wellerlab` enthält vier Familien als Unterpakete:
+
+| Unterpaket | Widgets |
+|---|---|
+| `wellerlab.metabo` | Metabo Feature Table, Preprocess, Feature Filter, Univariate Stats, Heatmap, Volcano |
+| `wellerlab.plsda` | PLS-DA, OPLS-DA (S-Plot mit Schwellen, Farbcodierung, Selektion; VIP/orthoVIP, R2X/R2Y/Q2, Permutation) |
+| `wellerlab.pca` | PCA Pro (Scaling, Varianz % an Achsen, Hotelling-T2/Q) |
+| `wellerlab.nmr` | Baseline, Binning, Region Exclusion, Filter, Normalization, Reference & Alignment |
+
+Icons werden zentral erzeugt: `orange-wellerlab-addon/tools/gen_icons.py`.
+Die früheren Einzelpakete (`orangeplsda`, `orangenmr`, `orangepca`, `orangemetabo`) sind darin
+aufgegangen; ihre alten Ordner bleiben als Historie im Repo, werden aber nicht mehr installiert.
 
 ## ⚡ Automatischer Installer (empfohlen)
 
@@ -29,16 +36,17 @@ Neue Tools kommen als eigener Unterordner mit eigenem `setup.py` dazu (Muster si
 # Zuerst den Installer holen (einmalig, bleibt lokal):
 curl -fsSL https://raw.githubusercontent.com/philippweller/WellerLab/main/orange-install.py -o orange-install.py
 
-# Dann ein Tool installieren:
-python3 orange-install.py plsda      # PLS-DA + OPLS-DA
-python3 orange-install.py nmr        # NMR Preprocessing
-python3 orange-install.py pca        # PCA Weller (chemometrics PCA + T2/Q)
-python3 orange-install.py metabo     # Metabo Weller (Feature-Table -> Stats -> Heatmap)
+# Dann installieren (ein Paket, eine Kategorie):
+python3 orange-install.py            # = wellerlab (alle 15 Widgets)
+python3 orange-install.py wellerlab  # dasselbe, explizit
 python3 orange-install.py all        # die gesamte Suite
+
+# Die früheren Einzelnamen (metabo, plsda, pca, pca-pro, nmr) funktionieren als
+# Aliase weiter und installieren dasselbe Paket.
 
 # sonst:
 python3 orange-install.py --show     # findet Oranges Python, installiert nicht
-python3 orange-install.py --check plsda   # prüft bestehende Installation
+python3 orange-install.py --check wellerlab   # prüft bestehende Installation
 python3 orange-install.py --python /pfad/zum/orange/python   # Erkennung überschreiben
 ```
 

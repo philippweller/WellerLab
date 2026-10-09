@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="8" fill="#00838F"/>
+  <g><polyline points="10,10 10,38 40,38" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="17" cy="30" r="2.2" fill="#fff"/><circle cx="22" cy="25" r="2.2" fill="#fff"/><circle cx="27" cy="27" r="2.2" fill="#fff"/><circle cx="33" cy="20" r="2.2" fill="#fff"/><circle cx="21" cy="34" r="2.2" fill="#fff"/><circle cx="30" cy="33" r="2.2" fill="#fff"/></g>
+  <text x="24" y="45" font-family="Helvetica,Arial,sans-serif" font-size="7" fill="#fff"
+        fill-opacity="0.85" text-anchor="middle">PRO</text>
+</svg>
