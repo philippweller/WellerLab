@@ -135,6 +135,17 @@ check("multi-point click (numpy array) does not raise and selects both",
       len(w._manual) == 2, f"{sorted(w._manual)}")
 w._manual = {sorted(w._manual)[0]}
 w._refresh_selection()
+
+# a click without a fitted model (e.g. constant class column) must be ignored
+w_nomodel = OWOPLSDA()
+w_nomodel.Outputs.selected.send = lambda v: None
+try:
+    w_nomodel._on_point_clicked(None, np.array([_Pt(0)], dtype=object))
+    no_crash = w_nomodel._manual == set()
+except Exception as exc:                                  # pragma: no cover
+    no_crash, exc_detail = False, repr(exc)
+check("click before a fit is ignored instead of raising", no_crash,
+      "" if no_crash else exc_detail)
 check("manual selection overrides the relevant set",
       captured.get("selected") is not None and len(captured["selected"]) == 1)
 
