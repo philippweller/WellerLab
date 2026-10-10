@@ -16,7 +16,8 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SUITES = ("_test_opls_core.py", "_test_owoplsda.py", "_test_suite.py",
-          "_test_heatmap.py", "_test_volcano.py", "_test_selection.py")
+          "_test_heatmap.py", "_test_volcano.py", "_test_selection.py",
+          "_test_pca.py")
 
 
 def _apple_silicon():

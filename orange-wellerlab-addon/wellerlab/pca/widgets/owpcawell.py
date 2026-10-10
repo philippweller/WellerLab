@@ -121,6 +121,8 @@ class OWPCAWell(widget.OWWidget):
         self.count_spin = gui.spin(
             cbox, self, "n_components", 1, 100,
             label="Components:", callback=self._param_changed)
+        self.used_lbl = gui.widgetLabel(cbox, "")
+        self.used_lbl.setStyleSheet("color: #6b7684;")
         gui.hSlider(cbox, self, "point_size", label="Point size:",
                     minValue=2, maxValue=16, callback=self._replot)
 
@@ -244,6 +246,9 @@ class OWPCAWell(widget.OWWidget):
             return
         self.Error.clear()
         r = self.analytics.result
+        k = int(r["n_components"])
+        self.used_lbl.setText(
+            f"in use: {k} component(s), {r['cumulative'][k - 1]:.1%} variance")
         self._scores = r["scores"]
         self._loadings = r["loadings"]
         self._remove_button.setEnabled(True)
@@ -436,13 +441,23 @@ class OWPCAWell(widget.OWWidget):
             self._add_interactive_scatter(
                 self.t2q_plot, T2[sel_arr], Q[sel_arr], sel_arr,
                 color=(255, 20, 35, 200), size=self.point_size + 3)
-        # control limits
-        if np.isfinite(t2l):
-            self.t2q_plot.plot([t2l, t2l], [0, Q.max() + Q.std() + 1e-9],
-                               pen=pg.mkPen("r", width=2))
-        if np.isfinite(ql):
-            self.t2q_plot.plot([0, T2.max() + T2.std() + 1e-9], [ql, ql],
-                               pen=pg.mkPen("r", width=2))
+        # Control limits as full-height / full-width lines: they stay correct
+        # when zooming and never end in mid-air (a length taken from the data
+        # left the Q line running past the axes and the T2 line stopping short).
+        # Each one only appears while it is actually in effect.
+        if np.isfinite(t2l) and self.use_T2:
+            self.t2q_plot.addLine(x=t2l, pen=pg.mkPen("r", width=2))
+        if np.isfinite(ql) and self.use_Q:
+            self.t2q_plot.addLine(y=ql, pen=pg.mkPen("r", width=2))
+        # Keep both the data and the limits in view: a limit can sit well
+        # beyond the data, and then it is the interesting part of the chart.
+        x_hi, y_hi = float(T2.max()), float(Q.max())
+        if np.isfinite(t2l) and self.use_T2:
+            x_hi = max(x_hi, t2l)
+        if np.isfinite(ql) and self.use_Q:
+            y_hi = max(y_hi, ql)
+        self.t2q_plot.setXRange(0, x_hi * 1.06, padding=0)
+        self.t2q_plot.setYRange(0, y_hi * 1.06, padding=0)
 
     # ------------------------------------------------------------------ outputs
     @gui.deferred
