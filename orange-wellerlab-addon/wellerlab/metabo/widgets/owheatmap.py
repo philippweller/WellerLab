@@ -135,7 +135,8 @@ class OWMetaboHeatmap(widget.OWWidget):
 
         gui.rubber(self.controlArea)
 
-        self.canvas = PlotCanvas((9, 7))
+        self.canvas = PlotCanvas((9, 6))
+        self.canvas.setMinimumHeight(280)      # so the Qt layout cannot crush
         self.canvas.on_click = self._on_canvas_click
         box2 = gui.vBox(self.mainArea, "Heatmap")
         box2.layout().addWidget(self.canvas)
@@ -155,7 +156,11 @@ class OWMetaboHeatmap(widget.OWWidget):
 
         # distribution of the selected feature over the samples, per group
         dbox = gui.vBox(self.mainArea, "Distribution")
-        self.dist_canvas = PlotCanvas((9, 2.4))
+        self.dist_canvas = PlotCanvas((9, 3))
+        # Without a minimum the layout gave the heatmap everything and left the
+        # distribution a few pixels high (reported from a live window).
+        self.dist_canvas.setMinimumHeight(220)
+        self.dist_canvas.setMinimumWidth(420)
         dbox.layout().addWidget(self.dist_canvas)
         attach_toolbar(dbox, self.dist_canvas, self)
 

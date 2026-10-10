@@ -155,6 +155,32 @@ except Exception as exc:                                  # pragma: no cover
 check("click before a fit is ignored instead of raising", no_crash,
       "" if no_crash else exc_detail)
 
+# --- more than one predictive component (p_pred is (p, n_pred)) -------------
+w_multi = OWOPLSDA()
+multi = {}
+for out_name in ("data", "components", "splot_data", "selected",
+                 "feature_values", "biomarkers", "selected_data"):
+    getattr(w_multi.Outputs, out_name).send = (
+        (lambda v: multi.__setitem__("components", v))
+        if out_name == "components" else (lambda v: None))
+w_multi.n_components = 2
+try:
+    w_multi.set_data(data)
+    app.processEvents()
+    comp = multi.get("components")
+    crashed = None
+except Exception as exc:                                    # pragma: no cover
+    comp, crashed = None, repr(exc)
+check("n_components=2 does not raise (p_pred is 2-D)", crashed is None, crashed or "")
+check("one output column per predictive component",
+      comp is not None
+      and [a.name for a in comp.domain.attributes][:2] == ["Predictive1",
+                                                           "Predictive2"],
+      f"{None if comp is None else [a.name for a in comp.domain.attributes]}")
+check("components table still has one row per feature",
+      comp is not None and len(comp) == p and comp.X[:, :2].any(),
+      f"{None if comp is None else len(comp)} rows for {p} features")
+
 # ---------------------------------------------------------------- lasso
 w_lasso = OWOPLSDA()
 sd_box = {}

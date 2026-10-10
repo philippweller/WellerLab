@@ -462,14 +462,21 @@ class OWOPLSDA(OWBaseLearner):
 
     def _create_output_components(self):
         model = self.model
-        names = ["Predictive"] + [f"Ortho {i + 1}" for i in range(model.n_ortho)]
+        n_pred = max(1, int(model.n_pred))
+        # One column per predictive component: with n_components > 1, p_pred is
+        # (p, n_pred), and ravel()ing it into a single column mixed 194/291
+        # values into the p-row table -> "could not broadcast input array".
+        names = (([f"Predictive{i + 1}" for i in range(n_pred)] if n_pred > 1
+                  else ["Predictive"])
+                 + [f"Ortho {i + 1}" for i in range(model.n_ortho)])
         attrs = [a.name for a in model.domain.attributes]
         dom = Domain([ContinuousVariable(n) for n in names],
                      metas=[StringVariable("Variable")])
         X = np.zeros((len(attrs), len(names)))
-        X[:, 0] = np.asarray(model.p_pred).ravel()
+        P = np.asarray(model.p_pred, dtype=float).reshape(len(attrs), -1)
+        X[:, :P.shape[1]] = P
         for i in range(model.n_ortho):
-            X[:, 1 + i] = np.asarray(model.p_ortho[i]).ravel()
+            X[:, P.shape[1] + i] = np.asarray(model.p_ortho[i]).ravel()
         tab = Table.from_numpy(dom, X=X,
                                metas=np.array(attrs, dtype=object).reshape(-1, 1))
         tab.name = "OPLS-DA components"

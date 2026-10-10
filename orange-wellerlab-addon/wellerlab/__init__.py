@@ -14,4 +14,4 @@ The numerical cores (``metabo.metabo_core``, ``plsda.opls_core``) are free of
 Qt/Orange and can be imported and tested headlessly.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"

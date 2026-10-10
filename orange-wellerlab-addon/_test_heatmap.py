@@ -343,6 +343,18 @@ wz._clear_selection()
 check("clearing the selection returns the distribution hint",
       not wz.dist_canvas.fig.axes[0].patches and bool(wz.dist_canvas.fig.axes[0].texts))
 
+# --- 15) the distribution panel keeps a usable size in a normal window ------
+wsz, _ = widget_with_spy()
+wsz.set_data(feature_table())
+wsz.resize(1100, 760)
+wsz.show()
+QApplication.processEvents()
+check("the distribution canvas enforces a minimum height",
+      wsz.dist_canvas.minimumHeight() >= 200, f"{wsz.dist_canvas.minimumHeight()}")
+check("neither canvas is crushed in a normal window",
+      wsz.dist_canvas.height() >= 180 and wsz.canvas.height() >= 200,
+      f"heatmap {wsz.canvas.height()} px / distribution {wsz.dist_canvas.height()} px")
+
 print()
 print(f"{len(fails)} FEHLGESCHLAGEN: {fails}" if fails else
       "Metabo Heatmap: alle Pruefungen bestanden")
