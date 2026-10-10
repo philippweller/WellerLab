@@ -18,6 +18,7 @@ import numpy as np
 from AnyQt.QtWidgets import QApplication
 
 from Orange.data import Table, Domain, ContinuousVariable, DiscreteVariable, StringVariable
+from matplotlib.patches import Rectangle
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -58,6 +59,11 @@ def spy(widget):
     box = {}
     widget.Outputs.heatmap.send = lambda v: box.__setitem__("heatmap", v)
     return box
+
+
+def widget_with_spy():
+    w = OWMetaboHeatmap()
+    return w, spy(w)
 
 
 # --- 1) the reported workflow: Data only, no Results ------------------------
@@ -117,6 +123,64 @@ w4.set_data(None)
 app.processEvents()
 check("no data shows a warning instead of an empty plot",
       out4.get("heatmap") is None and w4.Warning.no_data.is_shown())
+
+# --- 5) group legend (MetaboAnalyst-style) ---------------------------------
+w5, _ = widget_with_spy()
+w5.set_data(feature_table())                       # 3 groups
+w5.group_mode = "bar + legend"
+w5._draw()
+leg = w5._ax_heat.get_legend()
+labels = [t.get_text() for t in leg.get_texts()] if leg is not None else []
+check("legend lists the group names", labels == ["G0", "G1", "G2"], f"{labels}")
+check("legend is draggable", leg is not None and leg.get_draggable())
+w5.legend_pos = "below"
+w5._draw()
+check("legend position 'below' also renders",
+      w5._ax_heat.get_legend() is not None)
+w5.group_mode = "bar + names"
+w5._draw()
+n_with_bar = len(w5.fig.axes)
+check("group display 'bar + names' adds text to the bar",
+      any(len(a.texts) for a in w5.fig.axes))
+w5.group_mode = "none"
+w5._draw()
+check("group display 'none' omits bar and legend",
+      w5._ax_heat.get_legend() is None and len(w5.fig.axes) == n_with_bar - 1,
+      f"{n_with_bar} -> {len(w5.fig.axes)} Achsen")
+
+# --- 6) row dendrogram ------------------------------------------------------
+w6, _ = widget_with_spy()
+w6.set_data(feature_table(n_feat=10))
+n_axes_off = len(w6.fig.axes)
+w6.show_dendrogram = True
+w6._draw()
+check("dendrogram adds its own axes", len(w6.fig.axes) > n_axes_off,
+      f"{n_axes_off} -> {len(w6.fig.axes)}")
+check("dendrogram axes contains the tree lines",
+      any(getattr(a, "collections", []) for a in w6.fig.axes))
+w6.show_dendrogram = False
+w6._draw()
+check("dendrogram can be switched off again", len(w6.fig.axes) == n_axes_off)
+
+# --- 7) click a cell -> feature info ---------------------------------------
+w7, _ = widget_with_spy()
+data7 = feature_table()
+w7.set_data(data7)
+app.processEvents()
+w7._on_canvas_click(w7._ax_heat, 1.2, 0.1)          # near the top-left cell
+check("click selects the nearest cell", w7._selected == (0, 1),
+      f"{w7._selected}")
+info = w7._info_text()
+top_feature = w7._built["feats"][0]
+check("info panel names the feature", top_feature in info, info[:60])
+check("info panel reports the clicked sample and group",
+      str(w7._built["samples"][1]) in info and "G0" in info)
+check("info panel reports a p-value (ranking)", "p = " in info)
+check("clicked cell is highlighted in the figure",
+      any(isinstance(p, Rectangle) and p.get_linewidth() >= 2.0
+          for a in w7.fig.axes for p in a.patches))
+w7._on_canvas_click(w7._ax_heat, 50.0, 50.0)        # outside the heatmap
+check("click outside the heatmap clears the selection", w7._selected is None)
 
 print()
 print(f"{len(fails)} FEHLGESCHLAGEN: {fails}" if fails else
