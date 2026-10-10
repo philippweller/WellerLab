@@ -31,7 +31,7 @@ from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg
 
 from wellerlab.plsda import OPLSDALearner
-from ...selection import LassoPlotWidget, points_in_polygon
+from ...selection import LassoPlotWidget, points_in_polygon, select_features
 
 # colours: grey = not relevant, red = higher in the positive class,
 # blue = lower, and a dark edge for manually selected points
@@ -62,6 +62,7 @@ class OWOPLSDA(OWBaseLearner):
         selected = Output("Selected Features", Table, explicit=True)
         feature_values = Output("Feature Values", Table, explicit=True)
         biomarkers = Output("Selected Biomarkers", Table, explicit=True)
+        selected_data = Output("Selected Data", Table, explicit=True)
 
     class Warning(OWBaseLearner.Warning):
         no_class = Msg("OPLS-DA needs a discrete class variable.")
@@ -202,13 +203,16 @@ class OWOPLSDA(OWBaseLearner):
         sel = self._selected_table()
         self.Outputs.selected.send(sel)
         self.Outputs.biomarkers.send(sel)          # legacy name
+        self.Outputs.selected_data.send(
+            select_features(self.data, sorted(self._manual)))
         self.Outputs.feature_values.send(self._feature_values_table())
 
     # ------------------------------------------------------------- helpers
     def _clear_outputs(self):
         for o in (self.Outputs.data, self.Outputs.components,
                   self.Outputs.splot_data, self.Outputs.selected,
-                  self.Outputs.feature_values, self.Outputs.biomarkers):
+                  self.Outputs.selected_data, self.Outputs.feature_values,
+                  self.Outputs.biomarkers):
             o.send(None)
 
     def set_data(self, data):
@@ -281,6 +285,8 @@ class OWOPLSDA(OWBaseLearner):
         self._draw_splot()
         self.Outputs.selected.send(self._selected_table())
         self.Outputs.biomarkers.send(self._selected_table())
+        self.Outputs.selected_data.send(
+            select_features(self.data, sorted(self._manual)))
         self.Outputs.feature_values.send(self._feature_values_table())
 
     # ------------------------------------------------------------- selection
@@ -339,6 +345,8 @@ class OWOPLSDA(OWBaseLearner):
         self._draw_splot()
         self.Outputs.selected.send(self._selected_table())
         self.Outputs.biomarkers.send(self._selected_table())
+        self.Outputs.selected_data.send(
+            select_features(self.data, sorted(self._manual)))
         self.Outputs.feature_values.send(self._feature_values_table())
 
     def _selection_indices(self):

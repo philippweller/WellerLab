@@ -31,7 +31,7 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 
 from .. import metabo_core as mc
 from ._plot import PlotCanvas, attach_toolbar, draggable, points_in_polygon
-from ._tables import select_features
+from ...selection import select_features
 
 CMAP = LinearSegmentedColormap.from_list(
     "rdbu_r",

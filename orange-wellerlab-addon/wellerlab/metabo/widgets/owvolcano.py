@@ -32,7 +32,7 @@ from matplotlib.lines import Line2D
 from .. import metabo_core as mc
 from .owheatmap import GROUP_COLORS
 from ._plot import PlotCanvas, attach_toolbar, draggable, points_in_polygon
-from ._tables import select_features
+from ...selection import select_features
 
 NS_COLOUR = "#9e9e9e"
 UP_COLOUR = "#d62728"

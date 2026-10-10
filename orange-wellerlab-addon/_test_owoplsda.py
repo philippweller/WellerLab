@@ -19,7 +19,8 @@ import numpy as np
 from AnyQt.QtCore import Qt
 from AnyQt.QtWidgets import QApplication
 
-from Orange.data import Table, Domain, ContinuousVariable, DiscreteVariable
+from Orange.data import (Table, Domain, ContinuousVariable, DiscreteVariable,
+                         StringVariable)
 from wellerlab.plsda.widgets.owoplsda import OWOPLSDA
 
 app = QApplication.instance() or QApplication(sys.argv or ["test"])
@@ -40,8 +41,14 @@ cls = np.array([0] * (n // 2) + [1] * (n // 2))
 X = rng.normal(0, 1.0, (n, p))
 X[np.ix_(cls == 1, [2, 5, 9])] += 2.2          # 3 discriminating features
 attrs = [ContinuousVariable(f"f{i}") for i in range(p)]
-yvar = DiscreteVariable("group", values=["A", "B"])
-data = Table.from_numpy(Domain(attrs, yvar), X=X, Y=cls.reshape(-1, 1))
+yvar = DiscreteVariable("cls", values=["A", "B"])   # not "group": that name is a meta below
+# metas as the Metabo Feature Table would deliver them (checked for the
+# "Selected Data" output, which must keep them)
+_meta = np.array([[f"sample_{i}", "A" if cls[i] == 0 else "B"]
+                  for i in range(n)], dtype=object)
+data = Table.from_numpy(Domain(attrs, yvar,
+                               [StringVariable("sample"), StringVariable("group")]),
+                        X=X, Y=cls.reshape(-1, 1), metas=_meta)
 
 # ---------------------------------------------------------------- widget
 w = OWOPLSDA()
@@ -150,9 +157,12 @@ check("click before a fit is ignored instead of raising", no_crash,
 
 # ---------------------------------------------------------------- lasso
 w_lasso = OWOPLSDA()
+sd_box = {}
 for out in ("data", "components", "splot_data", "selected", "feature_values",
-            "biomarkers"):
-    getattr(w_lasso.Outputs, out).send = lambda v: None
+            "biomarkers", "selected_data"):
+    getattr(w_lasso.Outputs, out).send = (
+        (lambda v: sd_box.__setitem__("t", v)) if out == "selected_data"
+        else (lambda v: None))
 w_lasso.set_data(data)
 app.processEvents()
 w_lasso._manual = set()
@@ -219,6 +229,15 @@ pw.mouseReleaseEvent(_ev(QEvent.Type.MouseButtonRelease, widget_pos(*corners[0])
 check("dragging a lasso in the plot selects the enclosed points",
       len(w_lasso._manual) == len(w_lasso.splot_feature_names),
       f"{len(w_lasso._manual)} of {len(w_lasso.splot_feature_names)}")
+
+sd = sd_box.get("t")
+check("Selected Data output carries the selected features",
+      sd is not None and set(a.name for a in sd.domain.attributes) == w_lasso._manual
+      and len(sd) == len(data),
+      f"{None if sd is None else f'{len(sd)}x{len(sd.domain.attributes)}'}")
+check("Selected Data keeps the sample/group metas",
+      sd is not None and {"sample", "group"} <= {m.name for m in sd.domain.metas},
+      f"metas={None if sd is None else [m.name for m in sd.domain.metas]}")
 check("the polygon is removed after the drag",
       pw._polygon is None and pw._artist is None)
 check("manual selection overrides the relevant set",
