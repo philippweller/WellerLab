@@ -168,10 +168,10 @@ data7 = feature_table()
 w7.set_data(data7)
 app.processEvents()
 w7._on_canvas_click(w7._ax_heat, 1.2, 0.1)          # near the top-left cell
-check("click selects the nearest cell", w7._selected == (0, 1),
-      f"{w7._selected}")
-info = w7._info_text()
 top_feature = w7._built["feats"][0]
+check("click selects the nearest cell's feature", w7._selected == [top_feature]
+      and w7._cell == (0, 1), f"{w7._selected} cell={w7._cell}")
+info = w7._info_text()
 check("info panel names the feature", top_feature in info, info[:60])
 check("info panel reports the clicked sample and group",
       str(w7._built["samples"][1]) in info and "G0" in info)
@@ -180,7 +180,45 @@ check("clicked cell is highlighted in the figure",
       any(isinstance(p, Rectangle) and p.get_linewidth() >= 2.0
           for a in w7.fig.axes for p in a.patches))
 w7._on_canvas_click(w7._ax_heat, 50.0, 50.0)        # outside the heatmap
-check("click outside the heatmap clears the selection", w7._selected is None)
+check("click outside the heatmap clears the selection",
+      w7._selected == [] and w7._cell is None)
+
+# --- 8) shift-click multi-select -------------------------------------------
+from AnyQt.QtCore import Qt
+import AnyQt.QtWidgets as _QtW
+_orig_mods = _QtW.QApplication.keyboardModifiers
+_QtW.QApplication.keyboardModifiers = staticmethod(lambda: Qt.ShiftModifier)
+w7._on_canvas_click(w7._ax_heat, 1.0, 0.0)          # feature of row 0
+w7._on_canvas_click(w7._ax_heat, 1.0, 1.0)          # feature of row 1
+_QtW.QApplication.keyboardModifiers = _orig_mods
+check("shift-click adds features to the selection", len(w7._selected) == 2,
+      f"{w7._selected}")
+check("selection can be cleared with the button", (w7._clear_selection() or True)
+      and w7._selected == [])
+
+# --- 9) lasso selection ----------------------------------------------------
+w9, sent9 = widget_with_spy()
+w9.set_data(feature_table(n_feat=10))
+app.processEvents()
+w9._lasso_toggled()                                  # lasso off by default
+w9.lasso = True
+w9._lasso_toggled()
+check("lasso flag reaches the canvas", w9.canvas.lasso_enabled
+      and w9.canvas.on_lasso is not None)
+poly = [(-0.5, -0.5), (2.5, -0.5), (2.5, 2.5), (-0.5, 2.5)]   # cells of 3 rows
+w9._lasso_select(w9._ax_heat, poly)
+check("lasso selects the features of the enclosed cells",
+      len(w9._selected) == 3, f"{len(w9._selected)}")
+
+# --- 10) 'Selected Data' output --------------------------------------------
+sel = w9._selected_data_table()
+check("Selected Data is samples x selected features",
+      sel is not None and len(sel) == len(w9.data)
+      and [a.name for a in sel.domain.attributes] == w9._selected,
+      f"{None if sel is None else f'{len(sel)}x{len(sel.domain.attributes)}'}")
+w9._clear_selection()
+check("clearing empties the Selected Data output",
+      w9._selected_data_table() is None and sent9.get("heatmap") is not None)
 
 print()
 print(f"{len(fails)} FEHLGESCHLAGEN: {fails}" if fails else

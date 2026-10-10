@@ -12,6 +12,8 @@ Interaction provided by `PlotCanvas`:
   * dragging with the left button pans,
   * a left click (no drag) calls `on_click(axes, xdata, ydata)` — used by the
     volcano for point selection, with a pixel tolerance so edge points work,
+  * with `lasso_enabled` a left drag draws a polygon and calls
+    `on_lasso(axes, [(x, y), ...])` on release (panning is off while it is on),
   * `reset_view()` restores the automatic view; `after_draw()` keeps the
     user's zoom across redraws.
 
@@ -39,8 +41,12 @@ class PlotCanvas(FigureCanvasQTAgg):
         self.home = None           # (xlim, ylim) of the automatic view
         self.view = None           # the user's current view (None = home)
         self.on_click: Optional[Callable] = None   # callback(axes, xdata, ydata)
+        self.on_lasso: Optional[Callable] = None   # callback(axes, [(x, y), ...])
+        self.lasso_enabled = False
         self.toolbar = None
         self._press = None
+        self._lasso = None                         # (axes, [data points])
+        self._lasso_artist = None
 
     # ------------------------------------------------------------------ view
     def after_draw(self, ax, new_data=False):
@@ -114,7 +120,10 @@ class PlotCanvas(FigureCanvasQTAgg):
             x, y = self.mouseEventCoords(event)
             ax = self._axes_at(x, y)
             if ax is not None:
-                self._press = (x, y, ax, ax.get_xlim(), ax.get_ylim(), False)
+                if self.lasso_enabled and self.on_lasso is not None:
+                    self._start_lasso(ax, x, y)
+                else:
+                    self._press = (x, y, ax, ax.get_xlim(), ax.get_ylim(), False)
         super().mousePressEvent(event)
 
     def pan_by(self, ax, x0, y0, x1, y1, xl0, yl0):
@@ -127,6 +136,14 @@ class PlotCanvas(FigureCanvasQTAgg):
         self._remember(ax)
 
     def mouseMoveEvent(self, event):
+        if self._lasso is not None and (event.buttons() & Qt.LeftButton):
+            ax = self._lasso[0]
+            x, y = self.mouseEventCoords(event)
+            self._lasso[1].append(ax.transData.inverted().transform((x, y)))
+            self._update_lasso()
+            self.draw_idle()
+            super().mouseMoveEvent(event)
+            return
         if self._press is not None and (event.buttons() & Qt.LeftButton):
             x0, y0, ax, xl0, yl0, moved = self._press
             x, y = self.mouseEventCoords(event)
@@ -137,6 +154,15 @@ class PlotCanvas(FigureCanvasQTAgg):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        if self._lasso is not None and event.button() == Qt.LeftButton:
+            ax, pts = self._lasso
+            self._lasso = None
+            self._clear_lasso_artist()
+            self.draw_idle()
+            if len(pts) >= 3 and self.on_lasso is not None:
+                self.on_lasso(ax, list(pts))
+            super().mouseReleaseEvent(event)
+            return
         press, self._press = self._press, None
         if (event.button() == Qt.LeftButton and press is not None
                 and not press[5] and self.on_click is not None):
@@ -145,6 +171,27 @@ class PlotCanvas(FigureCanvasQTAgg):
             self._remember(ax)
             self.on_click(ax, *ax.transData.inverted().transform((x, y)))
         super().mouseReleaseEvent(event)
+
+    # -------------------------------------------------------------- lasso
+    def _start_lasso(self, ax, x, y):
+        self._lasso = (ax, [ax.transData.inverted().transform((x, y))])
+        self._lasso_artist, = ax.plot([], [], color="#111", lw=1.2, ls="--",
+                                      alpha=0.9, zorder=10)
+
+    def _update_lasso(self):
+        if self._lasso is None or self._lasso_artist is None:
+            return
+        pts = self._lasso[1]
+        self._lasso_artist.set_data([p[0] for p in pts] + [pts[0][0]],
+                                    [p[1] for p in pts] + [pts[0][1]])
+
+    def _clear_lasso_artist(self):
+        if self._lasso_artist is not None:
+            try:
+                self._lasso_artist.remove()
+            except (ValueError, AttributeError):
+                pass
+        self._lasso_artist = None
 
     # ------------------------------------------------------- nearest feature
     def nearest_point(self, ax, xdata, ydata, offsets):
@@ -157,6 +204,16 @@ class PlotCanvas(FigureCanvasQTAgg):
         d = np.hypot(disp[:, 0] - px, disp[:, 1] - py)
         i = int(np.argmin(d))
         return i if d[i] <= CLICK_TOLERANCE else None
+
+
+def points_in_polygon(offsets, polygon):
+    """Indices of the points (offsets, data coords) inside the lasso polygon."""
+    from matplotlib.path import Path
+    if offsets is None or len(offsets) == 0 or len(polygon) < 3:
+        return np.array([], dtype=int)
+    inside = Path(np.asarray(polygon, dtype=float)).contains_points(
+        np.asarray(offsets, dtype=float))
+    return np.nonzero(inside)[0]
 
 
 def attach_toolbar(box, canvas, parent):

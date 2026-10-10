@@ -31,7 +31,8 @@ from matplotlib.lines import Line2D
 
 from .. import metabo_core as mc
 from .owheatmap import GROUP_COLORS
-from ._plot import PlotCanvas, attach_toolbar, draggable
+from ._plot import PlotCanvas, attach_toolbar, draggable, points_in_polygon
+from ._tables import select_features
 
 NS_COLOUR = "#9e9e9e"
 UP_COLOUR = "#d62728"
@@ -57,6 +58,7 @@ class OWVolcano(widget.OWWidget):
 
     class Outputs:
         selected = Output("Selected Features", Table, default=True)
+        selected_data = Output("Selected Data", Table)
         feature_values = Output("Feature Values", Table)
 
     class Warning(widget.OWWidget.Warning):
@@ -67,6 +69,7 @@ class OWVolcano(widget.OWWidget):
     fdr_alpha = Setting(0.05)
     fc_thresh = Setting(1.0)
     label_top = Setting(10)
+    lasso = Setting(False)        # left-drag lasso selection instead of panning
     auto_commit = Setting(True)
 
     def __init__(self):
@@ -77,6 +80,7 @@ class OWVolcano(widget.OWWidget):
         self._volcano = None
         self._source = None        # 'results' | 'data' | None
         self._sc = None            # the volcano ScatterPath (for selection)
+        self._ax_scatter = None    # its axes (for the lasso check)
         self._ax = None            # its axes
         self._new_view = True      # next draw defines the home view
         self._feat = np.array([])  # feature names in scatter order
@@ -97,6 +101,10 @@ class OWVolcano(widget.OWWidget):
                  label="Label top N:", callback=self._redraw)
 
         sel = gui.widgetBox(self.controlArea, "Selection")
+        gui.checkBox(sel, self, "lasso", "Lasso select (drag in the plot)",
+                     callback=self._lasso_toggled,
+                     tooltip="Left-drag draws a polygon; all points inside are "
+                             "added to the selection. Wheel still zooms.")
         gui.button(sel, self, "Clear selection", callback=self._clear_selection)
         self.sel_lbl = gui.label(sel, self, "No feature selected.")
 
@@ -294,6 +302,7 @@ class OWVolcano(widget.OWWidget):
         colours = np.where(d == "ns", NS_COLOUR,
                            np.where(d == "up", UP_COLOUR, DOWN_COLOUR))
         sizes = np.where(d == "ns", 16, 28)
+        self._ax_scatter = ax
         self._sc = ax.scatter(lfc, neg, s=sizes, c=list(colours),
                               edgecolors="none", clip_on=False)
         # highlight the selected features on top
@@ -363,6 +372,27 @@ class OWVolcano(widget.OWWidget):
         else:
             self._selected = [] if self._selected == [feat] else [feat]
         self._redraw()
+
+    def _lasso_toggled(self):
+        self.canvas.lasso_enabled = bool(self.lasso)
+        self.canvas.on_lasso = self._lasso_select if self.lasso else None
+
+    def _lasso_select(self, ax, polygon):
+        """Add every feature whose volcano point lies inside the lasso polygon."""
+        if self._sc is None or ax is not self._ax_scatter or len(self._feat) == 0:
+            return
+        idx = points_in_polygon(self._sc.get_offsets(), polygon)
+        if len(idx) == 0:
+            return
+        feats = [str(self._feat[i]) for i in idx]
+        self._selected = list(dict.fromkeys(self._selected + feats))
+        self._redraw()
+        self.commit.now() if self.auto_commit else self.commit.deferred()
+
+    def _selected_data_table(self):
+        """The original data restricted to the selected features (samples x
+        features, class and metas kept) - ready for the Data Table widget."""
+        return select_features(self.data, self._selected)
 
     def _reset_views(self):
         self.canvas.reset_view()
@@ -464,6 +494,7 @@ class OWVolcano(widget.OWWidget):
                     metas=sel[["Feature", "direction"]].to_numpy(dtype=object))
                 out.name = "volcano selected"
                 self.Outputs.selected.send(out)
+        self.Outputs.selected_data.send(self._selected_data_table())
         self.Outputs.feature_values.send(self._feature_values_table())
 
     def _feature_values_table(self):
@@ -504,6 +535,7 @@ class OWVolcano(widget.OWWidget):
 
     def close(self):
         self.Outputs.selected.send(None)
+        self.Outputs.selected_data.send(None)
         self.Outputs.feature_values.send(None)
         super().close()
 

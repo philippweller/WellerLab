@@ -18,7 +18,7 @@ sample's value.  Wheel zooms, drag pans (see `_plot.PlotCanvas`).
 import numpy as np
 
 from AnyQt.QtCore import Qt
-from AnyQt.QtWidgets import QLabel
+from AnyQt.QtWidgets import QApplication, QLabel
 
 from Orange.data import (Table, Domain, ContinuousVariable, DiscreteVariable,
                          StringVariable)
@@ -30,7 +30,8 @@ from matplotlib.patches import Patch, Rectangle
 from scipy.cluster.hierarchy import linkage, dendrogram
 
 from .. import metabo_core as mc
-from ._plot import PlotCanvas, attach_toolbar, draggable
+from ._plot import PlotCanvas, attach_toolbar, draggable, points_in_polygon
+from ._tables import select_features
 
 CMAP = LinearSegmentedColormap.from_list(
     "rdbu_r",
@@ -66,6 +67,7 @@ class OWMetaboHeatmap(widget.OWWidget):
 
     class Outputs:
         heatmap = Output("Heatmap Data", Table)
+        selected_data = Output("Selected Data", Table)
 
     class Information(widget.OWWidget.Information):
         ranked_from_data = Msg(
@@ -82,6 +84,7 @@ class OWMetaboHeatmap(widget.OWWidget):
     group_mode = Setting(GROUP_MODES[0])
     legend_pos = Setting(LEGEND_POSITIONS[0])
     show_samples = Setting(True)
+    lasso = Setting(False)        # left-drag lasso selection instead of panning
 
     def __init__(self):
         super().__init__()
@@ -89,7 +92,8 @@ class OWMetaboHeatmap(widget.OWWidget):
         self.results = None
         self._new_view = True
         self._built = None
-        self._selected = None            # (row, col) of the clicked cell
+        self._selected = []              # selected feature names (multi-select)
+        self._cell = None                # (row, col) of the last clicked cell
 
         box = gui.widgetBox(self.controlArea, "Display")
         gui.spin(box, self, "top_n", 1, 500, label="Top N features:", callback=self._redraw)
@@ -110,6 +114,14 @@ class OWMetaboHeatmap(widget.OWWidget):
             label="Legend position:", callback=self._redraw)
         gui.label(lbox, self, "<i>Legends can be dragged inside the plot.</i>")
         self._sync_legend_controls()
+
+        sbox = gui.widgetBox(self.controlArea, "Selection")
+        gui.checkBox(sbox, self, "lasso", "Lasso select (drag in the plot)",
+                     callback=self._lasso_toggled,
+                     tooltip="Left-drag draws a polygon; the features of all "
+                             "cells inside are added to the selection.")
+        gui.button(sbox, self, "Clear selection", callback=self._clear_selection)
+        self.sel_lbl = gui.label(sbox, self, "No feature selected.")
 
         gui.rubber(self.controlArea)
 
@@ -136,7 +148,8 @@ class OWMetaboHeatmap(widget.OWWidget):
     def set_data(self, data):
         self.data = data
         self._new_view = True
-        self._selected = None
+        self._selected = []
+        self._cell = None
         self._redraw()
 
     @Inputs.results
@@ -284,6 +297,8 @@ class OWMetaboHeatmap(widget.OWWidget):
             self._update_input_summary()
             self.canvas.draw_idle()
             self.Outputs.heatmap.send(None)
+            self.Outputs.selected_data.send(None)
+            self._update_sel_label()
             return
         self.Warning.clear()
         if self._ranking_source == "data":
@@ -322,11 +337,13 @@ class OWMetaboHeatmap(widget.OWWidget):
         self.fig.suptitle(f"Top {nR} features (Ward cluster, ±{self.vlim:g})",
                           fontsize=10)
         self.details.setText(self._info_text())
+        self._update_sel_label()
         self._update_input_summary()
         self.canvas.after_draw(ax, new_data=self._new_view)
         self._new_view = False
         self.canvas.draw_idle()
         self._send_output(Z, feats, b["samples"], b["groups"])
+        self.Outputs.selected_data.send(self._selected_data_table())
 
     # --------------------------------------------------------------- elements
     def _layout(self):
@@ -381,14 +398,21 @@ class OWMetaboHeatmap(widget.OWWidget):
             ax_den.spines[side].set_visible(False)
 
     def _draw_selection(self, ax):
-        """Highlight the cell selected by the last click."""
-        if self._selected is None or self._built is None:
+        """Frame the row of every selected feature; mark the last clicked cell."""
+        if self._built is None:
             return
-        row, col = self._selected
         nR, nC = self._built["Z"].shape
-        if 0 <= row < nR and 0 <= col < nC:
-            ax.add_patch(Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False,
-                                   edgecolor="#111", linewidth=2.0))
+        feats = self._built["feats"]
+        for feat in self._selected:
+            if feat in feats:
+                row = feats.index(feat)
+                ax.add_patch(Rectangle((-0.5, row - 0.5), nC, 1, fill=False,
+                                       edgecolor="#111", linewidth=2.0))
+        if self._cell is not None:
+            row, col = self._cell
+            if 0 <= row < nR and 0 <= col < nC:
+                ax.add_patch(Rectangle((col - 0.5, row - 0.5), 1, 1, fill=False,
+                                       edgecolor="#111", linewidth=1.0, ls=":"))
 
     def _legend(self, b, ax):
         """MetaboAnalyst-style legend listing the groups with their colours."""
@@ -415,23 +439,71 @@ class OWMetaboHeatmap(widget.OWWidget):
 
     # ------------------------------------------------------------- selection
     def _on_canvas_click(self, ax, xdata, ydata):
-        """Map a click to a heatmap cell and show that feature's information."""
+        """Select the clicked cell's feature; shift-click adds/removes."""
         if self._built is None or ax is not self._ax_heat:
             return
         nR, nC = self._built["Z"].shape
         row, col = int(round(ydata)), int(round(xdata))
         if not (0 <= row < nR and 0 <= col < nC):
-            self._selected = None
+            self._selected = []                   # clicked empty space
+            self._cell = None
         else:
-            self._selected = (row, col)
+            feat = self._built["feats"][row]
+            if QApplication.keyboardModifiers() & Qt.ShiftModifier:
+                self._selected = ([f for f in self._selected if f != feat]
+                                  if feat in self._selected
+                                  else self._selected + [feat])
+            else:
+                self._selected = [] if self._selected == [feat] else [feat]
+            self._cell = (row, col)
         self._new_view = False        # keep the current zoom
+        self._draw()                  # sends the outputs (no deferred commit here)
+
+    # ------------------------------------------------------------ lasso / sel
+    def _lasso_toggled(self):
+        self.canvas.lasso_enabled = bool(self.lasso)
+        self.canvas.on_lasso = self._lasso_select if self.lasso else None
+
+    def _lasso_select(self, ax, polygon):
+        """Add the features of every cell inside the lasso polygon."""
+        if self._built is None or ax is not self._ax_heat:
+            return
+        nR, nC = self._built["Z"].shape
+        ys, xs = np.mgrid[0:nR, 0:nC]
+        cells = np.column_stack([xs.ravel(), ys.ravel()])      # (x, y) = (col, row)
+        idx = points_in_polygon(cells, polygon)
+        if len(idx) == 0:
+            return
+        rows = sorted({int(i) // nC for i in idx})
+        feats = [self._built["feats"][r] for r in rows]
+        self._selected = list(dict.fromkeys(self._selected + feats))
+        self._cell = (rows[0], int(idx[0]) % nC)
         self._draw()
 
+    def _clear_selection(self):
+        self._selected = []
+        self._cell = None
+        self._draw()
+
+    def _update_sel_label(self):
+        if not self._selected:
+            self.sel_lbl.setText("No feature selected.")
+        else:
+            self.sel_lbl.setText(f"<b>{len(self._selected)}</b> selected: "
+                                 + ", ".join(_short(f, 14)
+                                             for f in self._selected[:4])
+                                 + ("…" if len(self._selected) > 4 else ""))
+
+    def _selected_data_table(self):
+        """The original data restricted to the selected features (samples x
+        features, class and metas kept) - ready for the Data Table widget."""
+        return select_features(self.data, self._selected)
+
     def _info_text(self):
-        b, sel = self._built, self._selected
-        if b is None or sel is None:
+        b, cell = self._built, self._cell
+        if b is None or cell is None:
             return "Click a heatmap cell to see the feature's details."
-        row, col = sel
+        row, col = cell
         feat = b["feats"][row]
         z = b["Z"][row, col]
         raw = b["raw"][row, col]
@@ -497,6 +569,7 @@ class OWMetaboHeatmap(widget.OWWidget):
 
     def close(self):
         self.Outputs.heatmap.send(None)
+        self.Outputs.selected_data.send(None)
         super().close()
 
 
