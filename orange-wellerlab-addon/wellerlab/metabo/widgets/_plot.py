@@ -23,6 +23,8 @@ rect / pan) and `draggable()` makes a legend movable.
 
 import numpy as np
 from typing import Callable, Optional
+
+from ...selection import points_in_polygon  # shared with the pyqtgraph widgets
 from AnyQt.QtCore import Qt
 from matplotlib.backends.backend_qtagg import (
     FigureCanvasQTAgg, NavigationToolbar2QT)
@@ -204,16 +206,6 @@ class PlotCanvas(FigureCanvasQTAgg):
         d = np.hypot(disp[:, 0] - px, disp[:, 1] - py)
         i = int(np.argmin(d))
         return i if d[i] <= CLICK_TOLERANCE else None
-
-
-def points_in_polygon(offsets, polygon):
-    """Indices of the points (offsets, data coords) inside the lasso polygon."""
-    from matplotlib.path import Path
-    if offsets is None or len(offsets) == 0 or len(polygon) < 3:
-        return np.array([], dtype=int)
-    inside = Path(np.asarray(polygon, dtype=float)).contains_points(
-        np.asarray(offsets, dtype=float))
-    return np.nonzero(inside)[0]
 
 
 def attach_toolbar(box, canvas, parent):

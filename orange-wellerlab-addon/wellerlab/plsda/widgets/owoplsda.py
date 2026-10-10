@@ -31,6 +31,7 @@ from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg
 
 from wellerlab.plsda import OPLSDALearner
+from ...selection import LassoPlotWidget, points_in_polygon
 
 # colours: grey = not relevant, red = higher in the positive class,
 # blue = lower, and a dark edge for manually selected points
@@ -75,6 +76,7 @@ class OWOPLSDA(OWBaseLearner):
     p1_frac = Setting(20)               # % of max|p1| used as threshold
     pcorr_thr = Setting(0.5)            # |p(corr)| threshold
     label_top = Setting(True)
+    lasso = Setting(False)              # left-drag selects a polygon, no panning
 
     want_main_area = True
     resizing_enabled = True
@@ -90,7 +92,9 @@ class OWOPLSDA(OWBaseLearner):
         self._manual = set()            # manually selected feature names
         self._manual_mode = False       # False = follow the threshold set
 
-        self.plot_widget = pg.PlotWidget(title="S-Plot")
+        self.plot_widget = LassoPlotWidget(title="S-Plot")
+        self.plot_widget.on_lasso = self._lasso_select
+        self.plot_widget.lasso_enabled = bool(self.lasso)   # honour a saved setting
         self.plot_widget.setLabel("bottom", "p1 — predictive loading")
         self.plot_widget.setLabel("left", "p(corr) — correlation loading")
         self.plot_widget.showGrid(x=True, y=True, alpha=0.25)
@@ -143,6 +147,10 @@ class OWOPLSDA(OWBaseLearner):
         self.lbl_relevant = gui.label(thr, self, "relevant: —")
 
         sel = gui.vBox(self.controlArea, "Selection")
+        gui.checkBox(sel, self, "lasso", "Lasso select (drag in the plot)",
+                     callback=self._lasso_toggled,
+                     tooltip="Left-drag draws a polygon; every point inside is "
+                             "added to the selection. The wheel still zooms.")
         gui.button(sel, self, "Select relevant", callback=self._select_relevant)
         gui.button(sel, self, "Clear selection", callback=self._clear_selection)
         self.lbl_selected = gui.label(sel, self, "selected: 0")
@@ -292,6 +300,21 @@ class OWOPLSDA(OWBaseLearner):
         else:
             for nm in clicked:
                 self._manual.symmetric_difference_update({nm})
+        self._refresh_selection()
+
+    def _lasso_toggled(self):
+        self.plot_widget.lasso_enabled = bool(self.lasso)
+
+    def _lasso_select(self, polygon):
+        """Add every S-plot point inside the lasso polygon to the selection."""
+        if self.splot_p is None or not self.splot_feature_names:
+            return
+        offsets = np.column_stack([self.splot_p, self.splot_pcorr])
+        idx = points_in_polygon(offsets, polygon)
+        if len(idx) == 0:
+            return
+        self._manual_mode = True
+        self._manual |= {self.splot_feature_names[i] for i in idx}
         self._refresh_selection()
 
     def _select_relevant(self):

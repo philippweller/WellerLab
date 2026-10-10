@@ -16,6 +16,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import numpy as np
 
+from AnyQt.QtCore import Qt
 from AnyQt.QtWidgets import QApplication
 
 from Orange.data import Table, Domain, ContinuousVariable, DiscreteVariable
@@ -146,6 +147,80 @@ except Exception as exc:                                  # pragma: no cover
     no_crash, exc_detail = False, repr(exc)
 check("click before a fit is ignored instead of raising", no_crash,
       "" if no_crash else exc_detail)
+
+# ---------------------------------------------------------------- lasso
+w_lasso = OWOPLSDA()
+for out in ("data", "components", "splot_data", "selected", "feature_values",
+            "biomarkers"):
+    getattr(w_lasso.Outputs, out).send = lambda v: None
+w_lasso.set_data(data)
+app.processEvents()
+w_lasso._manual = set()
+w_lasso._manual_mode = False
+w_lasso.lasso = True
+w_lasso._lasso_toggled()
+check("lasso flag reaches the S-plot widget",
+      w_lasso.plot_widget.lasso_enabled and w_lasso.plot_widget.on_lasso is not None)
+
+# NOTE: do not shadow `p` - it holds the feature count further down the file.
+splot_p, splot_c = w_lasso.splot_p, w_lasso.splot_pcorr
+pad = 0.05 * (max(abs(splot_p).max(), abs(splot_c).max()) + 1e-9)
+poly = [(splot_p.min() - pad, splot_c.min() - pad),
+        (splot_p.max() + pad, splot_c.min() - pad),
+        (splot_p.max() + pad, splot_c.max() + pad),
+        (splot_p.min() - pad, splot_c.max() + pad)]
+w_lasso._lasso_select(poly)
+check("lasso selects every enclosed S-plot point",
+      len(w_lasso._manual) == len(w_lasso.splot_feature_names),
+      f"{len(w_lasso._manual)} of {len(w_lasso.splot_feature_names)}")
+before = set(w_lasso._manual)
+w_lasso._lasso_select([(0.0, 0.0), (1.0, 0.0)])          # degenerate polygon
+check("a degenerate polygon changes nothing", set(w_lasso._manual) == before)
+check("lasso is additive (existing picks stay)",
+      w_lasso._manual == before)
+w_lasso.lasso = False
+w_lasso._lasso_toggled()
+check("lasso can be switched off", not w_lasso.plot_widget.lasso_enabled)
+
+# end-to-end: draw the polygon with real mouse events on the plot widget
+from AnyQt.QtCore import QEvent, QPoint, QPointF
+from AnyQt.QtGui import QMouseEvent
+
+LB, NB, NM = Qt.MouseButton.LeftButton, Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier
+
+
+def _ev(kind, pos):
+    p = QPointF(pos)
+    buttons = LB if kind != QEvent.Type.MouseButtonRelease else NB
+    return QMouseEvent(kind, p, p, LB, buttons, NM)
+
+
+def widget_pos(x, y):
+    """Widget pixel position for a point in S-plot (view) coordinates."""
+    pw = w_lasso.plot_widget
+    scene = pw.getViewBox().mapViewToScene(QPointF(x, y))
+    return pw.mapFromScene(scene)
+
+
+w_lasso._manual = set()
+w_lasso._manual_mode = False
+w_lasso.lasso = True
+w_lasso._lasso_toggled()
+pad = 0.05 * (max(abs(splot_p).max(), abs(splot_c).max()) + 1e-9)
+corners = [(splot_p.min() - pad, splot_c.min() - pad),
+           (splot_p.max() + pad, splot_c.min() - pad),
+           (splot_p.max() + pad, splot_c.max() + pad),
+           (splot_p.min() - pad, splot_c.max() + pad)]
+pw = w_lasso.plot_widget
+pw.mousePressEvent(_ev(QEvent.Type.MouseButtonPress, widget_pos(*corners[0])))
+for c in corners[1:]:
+    pw.mouseMoveEvent(_ev(QEvent.Type.MouseMove, widget_pos(*c)))
+pw.mouseReleaseEvent(_ev(QEvent.Type.MouseButtonRelease, widget_pos(*corners[0])))
+check("dragging a lasso in the plot selects the enclosed points",
+      len(w_lasso._manual) == len(w_lasso.splot_feature_names),
+      f"{len(w_lasso._manual)} of {len(w_lasso.splot_feature_names)}")
+check("the polygon is removed after the drag",
+      pw._polygon is None and pw._artist is None)
 check("manual selection overrides the relevant set",
       captured.get("selected") is not None and len(captured["selected"]) == 1)
 
