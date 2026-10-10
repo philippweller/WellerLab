@@ -43,6 +43,8 @@ GROUP_COLORS = [
 ]
 
 #: group display modes (MetaboAnalyst-style group bar plus optional legend)
+AGGREGATIONS = ("Mean", "Median", "Sum")   # per-group summary in the distribution plot
+
 GROUP_MODES = ("bar + legend", "bar + names", "bar only", "none")
 LEGEND_POSITIONS = ("right", "below")
 
@@ -84,6 +86,7 @@ class OWMetaboHeatmap(widget.OWWidget):
     group_mode = Setting(GROUP_MODES[0])
     legend_pos = Setting(LEGEND_POSITIONS[0])
     show_samples = Setting(True)
+    agg = Setting("Mean")               # Mean | Median | Sum per group
     lasso = Setting(False)        # left-drag lasso selection instead of panning
 
     def __init__(self):
@@ -124,6 +127,11 @@ class OWMetaboHeatmap(widget.OWWidget):
                              "cells inside are added to the selection.")
         gui.button(sbox, self, "Clear selection", callback=self._clear_selection)
         self.sel_lbl = gui.label(sbox, self, "No feature selected.")
+        gui.comboBox(sbox, self, "agg", items=AGGREGATIONS,
+                     label="Distribution:", callback=self._draw_distribution,
+                     sendSelectedValue=True,
+                     tooltip="How the per-sample values are summarised per group "
+                             "in the distribution plot below the heatmap.")
 
         gui.rubber(self.controlArea)
 
@@ -144,6 +152,12 @@ class OWMetaboHeatmap(widget.OWWidget):
         self.details.setWordWrap(True)
         self.details.setTextInteractionFlags(Qt.TextSelectableByMouse)
         ibox.layout().addWidget(self.details)
+
+        # distribution of the selected feature over the samples, per group
+        dbox = gui.vBox(self.mainArea, "Distribution")
+        self.dist_canvas = PlotCanvas((9, 2.4))
+        dbox.layout().addWidget(self.dist_canvas)
+        attach_toolbar(dbox, self.dist_canvas, self)
 
     # ------------------------------------------------------------------ inputs
     @Inputs.data
@@ -185,12 +199,53 @@ class OWMetaboHeatmap(widget.OWWidget):
             pos_widget.setEnabled(self._legend_is_box())
 
     # ------------------------------------------------------------------ data
+    def _labels_of(self, var):
+        """Per-sample labels for a variable, resolving discrete CODES to names."""
+        d = self.data.domain
+        if var in d.metas:
+            vals = self.data.metas[:, d.metas.index(var)]
+        elif var in d.class_vars:
+            Y = np.asarray(self.data.Y)
+            # Orange stores Y 1-D for a single class variable
+            vals = Y if Y.ndim == 1 else Y[:, d.class_vars.index(var)]
+        else:
+            vals = np.asarray(self.data.X)[:, d.attributes.index(var)]
+        if isinstance(var, DiscreteVariable):
+            return [str(var.values[int(v)])
+                    if np.isfinite(v) and 0 <= int(v) < len(var.values) else "?"
+                    for v in vals]
+        return [str(v) for v in vals]
+
     def _read_groups(self):
+        """(per-sample group labels, levels) for the colour bar / legend.
+
+        A 'group' column often arrives as numeric CODES (a discrete variable
+        stored in metas/Y keeps codes, so `str(v)` gives "0.0", "2.0", …) - that
+        produced a bar labelled with numbers instead of names. Resolve discrete
+        codes to their value names and, if the group column is still purely
+        numeric, fall back to a discrete class variable, which usually carries
+        the study group.
+        """
         if self.data is None or "group" not in self.data.domain:
             return None, []
-        gvar = self.data.domain["group"]
-        vals = self.data.metas[:, self.data.domain.metas.index(gvar)]
-        return [str(v) for v in vals], list(dict.fromkeys(str(v) for v in vals))
+        labels = self._labels_of(self.data.domain["group"])
+
+        def numeric(vals):
+            for v in vals:
+                try:
+                    float(v)
+                except (TypeError, ValueError):
+                    return False
+            return True
+
+        if numeric(labels):
+            for cv in self.data.domain.class_vars:
+                if isinstance(cv, DiscreteVariable):
+                    alt = self._labels_of(cv)
+                    if not numeric(alt):
+                        labels = alt
+                        break
+        return labels, list(dict.fromkeys(labels))
 
     def _rows_from_results(self):
         """(score, feature) pairs from the Results table (ascending p), or None."""
@@ -301,6 +356,7 @@ class OWMetaboHeatmap(widget.OWWidget):
             self.Outputs.heatmap.send(None)
             self.Outputs.selected_data.send(None)
             self._update_sel_label()
+            self._draw_distribution()
             return
         self.Warning.clear()
         if self._ranking_source == "data":
@@ -346,6 +402,7 @@ class OWMetaboHeatmap(widget.OWWidget):
         self.canvas.draw_idle()
         self._send_output(Z, feats, b["samples"], b["groups"])
         self.Outputs.selected_data.send(self._selected_data_table())
+        self._draw_distribution()
 
     # --------------------------------------------------------------- elements
     def _layout(self):
@@ -412,7 +469,10 @@ class OWMetaboHeatmap(widget.OWWidget):
         ax_den = self.fig.add_axes([0.03, bottom, 0.09, height])
         dendrogram(lk, orientation="left", no_labels=True, ax=ax_den,
                    color_threshold=0, above_threshold_color="#7f8c9b")
-        ax_den.set_ylim(n - 0.5, -0.5)          # match imshow's top-down rows
+        # scipy places leaf k at y = 10k + 5 on a 0..10n axis. Inverting that
+        # range lines leaf k up with imshow row k (whose range is n-0.5 .. -0.5);
+        # using the row range here clipped the tree to its first ~10 %.
+        ax_den.set_ylim(10 * n, 0)
         ax_den.set_xticks([])
         ax_den.tick_params(left=False)
         for side in ("top", "right", "bottom"):
@@ -519,6 +579,68 @@ class OWMetaboHeatmap(widget.OWWidget):
         """The original data restricted to the selected features (samples x
         features, class and metas kept) - ready for the Data Table widget."""
         return select_features(self.data, self._selected)
+
+    def _feature_of_interest(self):
+        """The feature the details and distribution panels describe."""
+        b = self._built
+        if b is None:
+            return None
+        if self._cell is not None:
+            row, _col = self._cell
+            if 0 <= row < len(b["feats"]):
+                return b["feats"][row]
+        return self._selected[0] if self._selected else None
+
+    def _draw_distribution(self, *_):
+        """Distribution of the selected feature over the individual samples.
+
+        Bars: the chosen aggregate per group (Mean / Median / Sum). Dots: the
+        single samples, jittered, so the spread within a group stays visible.
+        Values are on the input scale (whatever the upstream widget delivered,
+        e.g. log2 peak areas) - NOT z-scores.
+        """
+        c = self.dist_canvas
+        c.fig.clear()
+        ax = c.fig.add_subplot(111)
+        b, feat = self._built, self._feature_of_interest()
+
+        if b is None or feat is None or b["groups"] is None:
+            ax.axis("off")
+            ax.text(0.5, 0.5, "Click a heatmap cell to see the distribution of "
+                              "its feature over the samples.",
+                    ha="center", va="center", fontsize=9, color="#6b7684")
+            c.after_draw(ax, new_data=True)
+            c.draw_idle()
+            return
+
+        y = np.asarray(b["raw"][b["feats"].index(feat)], dtype=float)
+        groups, levels = b["groups"], b["levels"]
+        order = [lv for lv in levels if lv in set(groups)]
+        vals = [[v for v, g in zip(y, groups) if g == lv] for lv in order]
+        agg = {"Mean": np.mean, "Median": np.median, "Sum": np.sum}[self.agg]
+
+        x = np.arange(len(order))
+        ax.bar(x, [float(agg(v)) for v in vals],
+               color=[_color_for(lv, levels) for lv in order],
+               alpha=0.55, edgecolor="none", zorder=1)
+        rng = np.random.RandomState(7)                 # stable jitter
+        for i, v in enumerate(vals):
+            ax.scatter(i + (rng.rand(len(v)) - 0.5) * 0.34, v, s=16,
+                       c="#2b2b2b", linewidths=0, zorder=3)
+        ax.set_xticks(x)
+        ax.set_xticklabels([_short(lv, 16) for lv in order], fontsize=8)
+        ax.set_ylabel(f"{self.agg.lower()} per group", fontsize=8)
+        ax.set_title(_short(feat, 80), fontsize=9)
+        ax.tick_params(labelsize=7)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        leg = ax.legend(handles=[Patch(facecolor=_color_for(lv, levels),
+                                       alpha=0.55, label=lv) for lv in order],
+                        loc="best", fontsize=7)
+        draggable(leg)
+        c.fig.tight_layout()
+        c.after_draw(ax, new_data=True)
+        c.draw_idle()
 
     def _info_text(self):
         b, cell = self._built, self._cell

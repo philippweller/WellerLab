@@ -240,6 +240,109 @@ check("int values are normalised to the right modes",
 check("legend still rendered for int values",
       wi._ax_heat.get_legend() is not None)
 
+# --- 12) group labels arriving as CODES or as a numeric column ---------------
+def coded_group_table():
+    """'group' as a discrete META: the metas array then holds CODES (0.0, 1.0,
+    ...), which is what turned the colour bar into numbers."""
+    base = feature_table()
+    n = len(base)
+    return Table.from_numpy(
+        Domain(list(base.domain.attributes),
+               DiscreteVariable("cls", values=["a", "b"]),
+               [StringVariable("sample"),
+                DiscreteVariable("group", values=["G0", "G1", "G2"])]),
+        X=np.asarray(base.X), Y=np.asarray(base.Y),
+        metas=np.array([[f"s{i}", float(i // 3)] for i in range(n)], dtype=object))
+
+
+def numeric_group_table():
+    """'group' purely numeric, with the real names in a discrete class."""
+    base = feature_table()
+    n = len(base)
+    return Table.from_numpy(
+        Domain(list(base.domain.attributes),
+               DiscreteVariable("ferment", values=["ANF", "OPP", "WILD"]),
+               [StringVariable("sample"), ContinuousVariable("group")]),
+        X=np.asarray(base.X),
+        Y=np.repeat([0, 1, 2], n // 3).reshape(-1, 1),
+        metas=np.array([[f"s{i}", float(i // 3)] for i in range(n)], dtype=object))
+
+
+wc, _ = widget_with_spy()
+wc.set_data(coded_group_table())
+wc.group_mode = "bar + names"
+wc._draw()
+_, levels_c = wc._read_groups()
+check("group codes are resolved to the variable's value names",
+      levels_c == ["G0", "G1", "G2"], f"{levels_c}")
+bar_texts = [t.get_text() for a in wc.fig.axes for t in a.texts]
+check("no numbers are painted on the colour bar",
+      bool(bar_texts) and all(t.startswith("G") for t in bar_texts),
+      f"{bar_texts[:6]}")
+
+wn, _ = widget_with_spy()
+wn.set_data(numeric_group_table())
+wn._draw()
+_, levels_n = wn._read_groups()
+check("a numeric 'group' column falls back to the discrete class names",
+      levels_n == ["ANF", "OPP", "WILD"], f"{levels_n}")
+
+# --- 13) the dendrogram spans every row --------------------------------------
+wd, _ = widget_with_spy()
+wd.set_data(feature_table(n_feat=10))
+wd.cluster = True
+wd.show_dendrogram = True
+wd._draw()
+nR = wd._built["Z"].shape[0]
+den = [a for a in wd.fig.axes
+       if a.get_position().x0 < 0.2 and a.get_position().height > 0.3]
+heat = [a for a in wd.fig.axes if a.images][0]
+check("dendrogram uses scipy's leaf scale (0 .. 10n)",
+      bool(den) and tuple(den[0].get_ylim()) == (10.0 * nR, 0.0),
+      f"{None if not den else den[0].get_ylim()}")
+check("dendrogram matches the heatmap's vertical extent",
+      bool(den) and np.allclose(den[0].get_position().bounds[1::2],
+                                heat.get_position().bounds[1::2]),
+      f"{None if not den else den[0].get_position().bounds[1::2]}")
+
+# --- 14) distribution of the selected feature --------------------------------
+wz, _ = widget_with_spy()
+wz.set_data(feature_table())
+wz._draw()
+ax = wz.dist_canvas.fig.axes[0]
+check("distribution shows a hint while nothing is selected",
+      not ax.patches and bool(ax.texts))
+
+wz._on_canvas_click(wz._ax_heat, 0.0, 0.0)
+ax = wz.dist_canvas.fig.axes[0]
+b = wz._built
+y = np.asarray(b["raw"][b["feats"].index(wz._feature_of_interest())], dtype=float)
+means = [float(np.mean([v for v, g in zip(y, b["groups"]) if g == lv]))
+         for lv in b["levels"]]
+check("distribution bars are the per-group means",
+      np.allclose([p.get_height() for p in ax.patches], means),
+      f"{[round(p.get_height(), 2) for p in ax.patches]}")
+check("every sample is drawn as a dot",
+      sum(len(c.get_offsets()) for c in ax.collections) == len(y),
+      f"{sum(len(c.get_offsets()) for c in ax.collections)} of {len(y)}")
+check("the x-axis labels the groups",
+      [t.get_text() for t in ax.get_xticklabels()] == list(b["levels"]))
+
+for mode, fn in (("Median", np.median), ("Sum", np.sum)):
+    wz.agg = mode
+    wz._draw_distribution()
+    got = [p.get_height() for p in wz.dist_canvas.fig.axes[0].patches]
+    exp = [float(fn([v for v, g in zip(y, b["groups"]) if g == lv]))
+           for lv in b["levels"]]
+    check(f"aggregation '{mode}' is applied per group", np.allclose(got, exp),
+          f"{[round(v, 2) for v in got]}")
+
+wz.agg = "Mean"
+wz._draw_distribution()
+wz._clear_selection()
+check("clearing the selection returns the distribution hint",
+      not wz.dist_canvas.fig.axes[0].patches and bool(wz.dist_canvas.fig.axes[0].texts))
+
 print()
 print(f"{len(fails)} FEHLGESCHLAGEN: {fails}" if fails else
       "Metabo Heatmap: alle Pruefungen bestanden")
