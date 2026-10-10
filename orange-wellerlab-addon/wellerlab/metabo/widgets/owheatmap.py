@@ -2,10 +2,13 @@
 and a group bar. Uses matplotlib (FigureCanvasQTAgg) embedded in the main area.
 
 Inputs:
-  Data    — the (preprocessed) sample×feature Table.
+  Data    — the (preprocessed) sample×feature Table.  Required.
   Results — the univariate results Table (one row per feature, with p/FDR).
-The widget takes the top-N features (by p) from Results, builds the
-autoscaled matrix, clusters rows, and draws the heatmap.
+The widget takes the top-N features by p and draws the autoscaled, row-clustered
+heatmap.  Without a Results connection it ranks the features itself - one-way
+ANOVA over the 'group' meta, or by variance if the table has no group column -
+so it also works directly after Preprocess / Feature Filter (like the Volcano
+widget).  The status line reports which ranking was used.
 """
 
 import numpy as np
@@ -13,9 +16,11 @@ import numpy as np
 from Orange.data import Table
 from Orange.widgets import widget, gui
 from Orange.widgets.settings import Setting
-from Orange.widgets.widget import Input, Output
+from Orange.widgets.widget import Input, Output, Msg
 from matplotlib.colors import LinearSegmentedColormap
 from scipy.cluster.hierarchy import linkage, dendrogram
+
+from .. import metabo_core as mc
 
 from ._plot import PlotCanvas, attach_toolbar
 
@@ -31,8 +36,9 @@ GROUP_COLORS = [
 
 class OWMetaboHeatmap(widget.OWWidget):
     name = "Metabo Heatmap"
-    description = ("Top-N biomarker heatmap with Ward row clustering and a "
-                   "group bar; PNG/SVG export.")
+    description = ("Top-N biomarker heatmap with Ward row clustering and a group "
+                   "bar; ranks by Results, or by ANOVA/variance computed from "
+                   "Data when no Results are connected. PNG/SVG export.")
     icon = "icons/Heatmap.svg"
     priority = 3150
     keywords = "heatmap, clustering, ward, biomarker, top-n"
@@ -46,6 +52,13 @@ class OWMetaboHeatmap(widget.OWWidget):
 
     class Outputs:
         heatmap = Output("Heatmap Data", Table)
+
+    class Information(widget.OWWidget.Information):
+        ranked_from_data = Msg(
+            "No Results connected - top features ranked by {} computed from Data.")
+
+    class Warning(widget.OWWidget.Warning):
+        no_data = Msg("Connect a preprocessed feature table to 'Data'.")
 
     top_n = Setting(20)
     cluster = Setting(True)
@@ -100,7 +113,7 @@ class OWMetaboHeatmap(widget.OWWidget):
     def _build(self):
         """Return (X_sub [features x samples], feature_names, sample_names,
         groups, levels, stats_by_feature)."""
-        if self.data is None or self.results is None:
+        if self.data is None:
             return None
         X_sf = np.asarray(self.data.X, dtype=float)          # samples x features
         X_f = X_sf.T                                         # features x samples
@@ -114,27 +127,18 @@ class OWMetaboHeatmap(widget.OWWidget):
         groups, levels = self._read_groups()
         # map results feature name -> row index in X_f
         name_to_row = {n: i for i, n in enumerate(feat_all)}
-        res = self.results
-        pcol = None
-        for idx, c in enumerate(res.domain.attributes):
-            if c.name == "p":
-                pcol = idx
-                break
-        if pcol is None:
+        # ranking: use the univariate Results when connected, otherwise compute
+        # it from Data (like the Volcano widget does), so the widget also works
+        # directly after Preprocess/Feature Filter.
+        self._ranking_source = self._ranking_kind = None
+        rows = self._rows_from_results()
+        if rows is None:
+            rows = self._rows_from_data()
+            self._ranking_source = "data" if rows is not None else None
+        else:
+            self._ranking_source = "results"
+        if rows is None:
             return None
-        feat_col = None
-        for idx, mv in enumerate(res.domain.metas):
-            if mv.name == "Feature":
-                feat_col = idx
-                break
-        if feat_col is None:
-            return None
-        # build (p, feature) list
-        rows = []
-        for i in range(len(res)):
-            f = str(res.metas[i, feat_col])
-            p = float(res[i, pcol])
-            rows.append((p, f))
         rows.sort(key=lambda t: t[0])
         top = rows[:self.top_n]
         top_feats = [f for _, f in top]
@@ -160,19 +164,59 @@ class OWMetaboHeatmap(widget.OWWidget):
         top_feats = [top_feats[i] for i in order]
         return Z, top_feats, sample_names, groups, levels
 
+    def _rows_from_results(self):
+        """(score, feature) pairs from the Results table (ascending p), or None."""
+        if self.results is None:
+            return None
+        res = self.results
+        pcol = next((i for i, c in enumerate(res.domain.attributes)
+                     if c.name == "p"), None)
+        feat_col = next((i for i, mv in enumerate(res.domain.metas)
+                         if mv.name == "Feature"), None)
+        if pcol is None or feat_col is None:
+            return None
+        return [(float(res[i, pcol]), str(res.metas[i, feat_col]))
+                for i in range(len(res))]
+
+    def _rows_from_data(self):
+        """Rank features without a Results table: one-way ANOVA over the 'group'
+        meta, or by variance when no usable group column is present."""
+        if self.data is None:
+            return None
+        feat = [a.name for a in self.data.domain.attributes]
+        X_f = np.asarray(self.data.X, dtype=float).T
+        groups, levels = self._read_groups()
+        if groups and len(levels) >= 2 and min(groups.count(lv) for lv in levels) >= 2:
+            self._ranking_kind = "one-way ANOVA"
+            df, _ = mc.univariate(X_f, groups, "anova", feature_names=feat)
+            p = dict(zip(df["Feature"], (float(v) for v in df["p"])))
+            return [(p[f], f) for f in feat
+                    if f in p and np.isfinite(p[f])]
+        self._ranking_kind = "variance"
+        var = X_f.var(axis=1, ddof=1)
+        return [(-float(var[i]), feat[i]) for i in range(len(feat))]
+
     # ------------------------------------------------------------------ draw
     def _draw(self):
         self.fig = self.canvas.fig
         self.fig.clear()
+        self.Information.clear()
         built = self._build()
         if built is None:
+            self.Warning.clear()
+            hint = ("Connect a preprocessed feature table to 'Data'."
+                    if self.data is None else "No features to show.")
+            if self.data is None:
+                self.Warning.no_data()
             ax = self.fig.add_subplot(111)
-            ax.text(0.5, 0.5, "Waiting for data + results…",
-                    ha="center", va="center", fontsize=11)
+            ax.text(0.5, 0.5, hint, ha="center", va="center", fontsize=11)
             ax.axis("off")
             self.canvas.draw_idle()
             self.Outputs.heatmap.send(None)
             return
+        self.Warning.clear()
+        if self._ranking_source == "data":
+            self.Information.ranked_from_data(self._ranking_kind)
         Z, top_feats, sample_names, groups, levels = built
         nR, nC = Z.shape
         # group bar on top
