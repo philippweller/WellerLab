@@ -30,7 +30,18 @@ doppelt.
 Ein generiertes, konsistentes Set: gleiche Kachelform und Strichstärke,
 Familienfarbe und -glyphe (Chromatogramm = Metabo, Multiplett = NMR,
 latente Ellipsen = PLS/OPLS, Score-Plot = PCA) plus Kurzlabel.
-Erzeugt von `tools/gen_icons.py` im Monorepo.
+Erzeugt von `tools/gen_icons.py` im Monorepo (inkl. Kategorie-Icon
+`widgets/icons/WellerLab.svg`).
+
+### Warum ein `widget_discovery`-Hook?
+
+Orange scannt bei einem Entry-Point-**Paket** nur die Module, die *direkt* darin
+liegen. Unsere Widgets stecken in vier Familien-Unterpaketen, ein reiner
+Paket-Scan findet also nichts — die Kategorie bliebe leer. Deshalb definiert
+`wellerlab/widgets/__init__.py` denselben Hook, den auch `Orange.widgets` nutzt:
+Er schiebt die vier Familienpakete explizit in die eine Kategorie „Weller Lab"
+(inklusive Farbe und Icon). `_test_suite.py` prüft das über Oranges **echte**
+Discovery (`orangewidget.workflow.discovery`), nicht über die Legacy-Variante.
 
 ## Tests (headless, offscreen)
 

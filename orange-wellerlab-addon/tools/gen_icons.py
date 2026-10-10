@@ -54,6 +54,16 @@ ICONS = {
             ("NMRFilter", "FILT"), ("NMRNormalize", "NORM"), ("NMRReference", "REF")],
 }
 
+# category icon: the four family colours as a 2x2 tile
+CATEGORY_ICON = """<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="8" fill="#1F4E79"/>
+  <rect x="9" y="9" width="13" height="13" rx="3" fill="#1F4E79" stroke="#fff" stroke-width="1.5"/>
+  <rect x="26" y="9" width="13" height="13" rx="3" fill="#6A1B9A" stroke="#fff" stroke-width="1.5"/>
+  <rect x="9" y="26" width="13" height="13" rx="3" fill="#00838F" stroke="#fff" stroke-width="1.5"/>
+  <rect x="26" y="26" width="13" height="13" rx="3" fill="#2E7D32" stroke="#fff" stroke-width="1.5"/>
+</svg>
+"""
+
 TEMPLATE = """<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
   <rect width="48" height="48" rx="8" fill="{colour}"/>
   <g>{glyph}</g>
@@ -72,6 +82,13 @@ for family, items in ICONS.items():
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(TEMPLATE.format(colour=colour, glyph=GLYPH[glyph_key], label=label))
         written.append(f"{family}/{name}.svg")
+
+# category icon for the umbrella "wellerlab.widgets" package
+cat_dir = os.path.join(ROOT, "widgets", "icons")
+os.makedirs(cat_dir, exist_ok=True)
+with open(os.path.join(cat_dir, "WellerLab.svg"), "w", encoding="utf-8") as fh:
+    fh.write(CATEGORY_ICON)
+written.append("widgets/WellerLab.svg (Kategorie)")
 
 print(f"{len(written)} Icons erzeugt:")
 for w in written:

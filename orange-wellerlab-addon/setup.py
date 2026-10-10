@@ -11,7 +11,7 @@ long_description = (README.read_text(encoding="utf-8") if README.exists()
 
 setup(
     name="wellerlab",
-    version="0.1.0",
+    version="0.1.1",
     description="WellerLab Orange3 suite: Metabo statistics, PLS-DA/OPLS-DA, "
                 "PCA Pro and NMR preprocessing in one category",
     long_description=long_description,
