@@ -108,10 +108,12 @@ class OWMetaboHeatmap(widget.OWWidget):
 
         lbox = gui.widgetBox(self.controlArea, "Legend")
         gui.comboBox(lbox, self, "group_mode", items=GROUP_MODES,
-                     label="Groups:", callback=self._redraw)
+                     label="Groups:", callback=self._redraw,
+                     sendSelectedValue=True)   # store the STRING, not the index
         self.legend_pos_control = gui.comboBox(
             lbox, self, "legend_pos", items=LEGEND_POSITIONS,
-            label="Legend position:", callback=self._redraw)
+            label="Legend position:", callback=self._redraw,
+            sendSelectedValue=True)
         gui.label(lbox, self, "<i>Legends can be dragged inside the plot.</i>")
         self._sync_legend_controls()
 
@@ -180,7 +182,7 @@ class OWMetaboHeatmap(widget.OWWidget):
         """The legend position only matters when a legend is drawn."""
         pos_widget = getattr(self, "legend_pos_control", None)
         if pos_widget is not None:
-            pos_widget.setEnabled(self.group_mode.startswith("bar + legend"))
+            pos_widget.setEnabled(self._legend_is_box())
 
     # ------------------------------------------------------------------ data
     def _read_groups(self):
@@ -353,21 +355,40 @@ class OWMetaboHeatmap(widget.OWWidget):
         the feature labels between dendrogram and heatmap) and for the legend on
         the right, so long compound names cannot collide with either.
         """
-        legend_right = self.group_mode == "bar + legend" and self.legend_pos == "right"
+        legend_right = self._legend_is_box() and self._legend_pos() == "right"
         left = 0.40 if self.show_dendrogram else 0.14
         right = 0.62 if legend_right else 0.93
         height = 0.64 if self._legend_below() else 0.70
         return left, 0.14, max(0.20, right - left), height
 
+    def _group_mode(self):
+        """Group display mode as a string.
+
+        Orange's combo box stores the item INDEX (int) unless sendSelectedValue
+        is set. A workflow saved with an earlier build can still hold an int, so
+        normalise here instead of assuming a string.
+        """
+        mode = self.group_mode
+        if isinstance(mode, int) and 0 <= mode < len(GROUP_MODES):
+            return GROUP_MODES[mode]
+        return mode if mode in GROUP_MODES else GROUP_MODES[0]
+
+    def _legend_pos(self):
+        """Legend position as a string (same int/str caveat as _group_mode)."""
+        pos = self.legend_pos
+        if isinstance(pos, int) and 0 <= pos < len(LEGEND_POSITIONS):
+            return LEGEND_POSITIONS[pos]
+        return pos if pos in LEGEND_POSITIONS else LEGEND_POSITIONS[0]
+
     def _legend_is_box(self):
-        return self.group_mode == "bar + legend"
+        return self._group_mode() == "bar + legend"
 
     def _legend_below(self):
-        return self._legend_is_box() and self.legend_pos == "below"
+        return self._legend_is_box() and self._legend_pos() == "below"
 
     def _draw_group_bar(self, ax, b, nC):
         """Colour bar above the heatmap, optionally with the group names on it."""
-        if self.group_mode == "none" or b["groups"] is None:
+        if self._group_mode() == "none" or b["groups"] is None:
             return
         ax_bar = self.fig.add_axes(
             [ax.get_position().x0, ax.get_position().y1 + 0.01,
@@ -378,7 +399,7 @@ class OWMetaboHeatmap(widget.OWWidget):
                                        edgecolor="none"))
         ax_bar.set_xlim(-0.5, nC - 0.5)
         ax_bar.set_ylim(0, 1)
-        if self.group_mode == "bar + names" and nC <= 30:
+        if self._group_mode() == "bar + names" and nC <= 30:
             for j, g in enumerate(b["groups"]):
                 ax_bar.text(j, 0.5, _short(g, 6), ha="center", va="center",
                             fontsize=5.5, color="white", rotation=90)
@@ -426,7 +447,7 @@ class OWMetaboHeatmap(widget.OWWidget):
             if h.get_label() not in seen:
                 seen.add(h.get_label())
                 uniq.append(h)
-        if self.legend_pos == "below":
+        if self._legend_pos() == "below":
             leg = ax.legend(handles=uniq, loc="upper center",
                             bbox_to_anchor=(0.5, -0.32), ncol=min(4, len(uniq)),
                             frameon=False, fontsize=7.5, title="Group",

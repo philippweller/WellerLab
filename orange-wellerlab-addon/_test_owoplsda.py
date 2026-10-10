@@ -125,9 +125,15 @@ class _Pt:
 
 
 w._manual = set()
-w._on_point_clicked(None, [_Pt(0)])
+# pyqtgraph hands the clicked points as a NUMPY ARRAY, not a list - with more
+# than one element `if not points` raises "truth value ... is ambiguous".
+w._on_point_clicked(None, np.array([_Pt(0)], dtype=object))
 check("manual click selects exactly one feature",
       len(w._manual) == 1, f"{sorted(w._manual)}")
+w._on_point_clicked(None, np.array([_Pt(1), _Pt(2)], dtype=object))
+check("multi-point click (numpy array) does not raise and selects both",
+      len(w._manual) == 2, f"{sorted(w._manual)}")
+w._manual = {sorted(w._manual)[0]}
 w._refresh_selection()
 check("manual selection overrides the relevant set",
       captured.get("selected") is not None and len(captured["selected"]) == 1)

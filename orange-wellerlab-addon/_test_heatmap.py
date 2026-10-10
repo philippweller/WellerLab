@@ -220,6 +220,26 @@ w9._clear_selection()
 check("clearing empties the Selected Data output",
       w9._selected_data_table() is None and sent9.get("heatmap") is not None)
 
+# --- 11) combo-box values are ints in the GUI -------------------------------
+# Orange's gui.comboBox stores the item INDEX unless sendSelectedValue is set;
+# the widget must cope with that (and with an int saved by an earlier build).
+from wellerlab.metabo.widgets.owheatmap import GROUP_MODES, LEGEND_POSITIONS
+wi, _ = widget_with_spy()
+wi.set_data(feature_table())
+wi.group_mode = 0                  # as the combo box would store it
+wi.legend_pos = 1
+try:
+    wi._draw()
+    ok_draw = True
+except Exception as e:                                    # pragma: no cover
+    ok_draw, err = False, repr(e)
+check("int combo values do not crash the draw", ok_draw,
+      "" if ok_draw else err)
+check("int values are normalised to the right modes",
+      wi._group_mode() == GROUP_MODES[0] and wi._legend_pos() == LEGEND_POSITIONS[1])
+check("legend still rendered for int values",
+      wi._ax_heat.get_legend() is not None)
+
 print()
 print(f"{len(fails)} FEHLGESCHLAGEN: {fails}" if fails else
       "Metabo Heatmap: alle Pruefungen bestanden")

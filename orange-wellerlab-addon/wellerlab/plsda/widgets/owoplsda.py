@@ -277,7 +277,9 @@ class OWOPLSDA(OWBaseLearner):
 
     # ------------------------------------------------------------- selection
     def _on_point_clicked(self, _scatter, points, _ev=None):
-        if not points:
+        # pyqtgraph hands `points` as a numpy array, not a list, so a plain
+        # `if not points:` raises "truth value of an array is ambiguous".
+        if points is None or len(points) == 0:
             return
         mods = QApplication.keyboardModifiers()
         additive = bool(mods & Qt.ShiftModifier)
