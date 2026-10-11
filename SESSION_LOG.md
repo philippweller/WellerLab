@@ -6,6 +6,53 @@ durable digest for the team.
 
 ---
 
+## Aktueller Stand — 2026-10-10, Abend (wellerlab 0.2.4)
+
+**Auf PyPI:** `wellerlab 0.2.4` (18 Widgets, eine Kategorie „Weller Lab").
+Lokal lädt Orange die Arbeitskopie (editable install) — nach Änderungen
+**Orange neu starten**.
+
+### Workflow-Checkliste (was wo zu finden ist)
+
+| Widget | neu/geändert | kurz nachsehen |
+|---|---|---|
+| Metabo Heatmap | Legende „bar + names/legend", Dendrogramm, Zell-Klick + Info, Mehrfachauswahl/Lasso, **Verteilungs-Panel** (Mean/Median/Sum), Gruppennamen statt Codes | Reihen anklicken → Verteilung unten; Dendrogramm spannt alle Zeilen; Balken zeigt Namen |
+| Metabo Volcano | Mehrfachauswahl + Lasso, Ausgang **„Selected Data"**, Gruppennamen statt Codes | Legende + Gruppen-Auswahl zeigen Namen |
+| Metabo Univariate Stats | Gruppennamen statt Codes | Basis-Gruppen-Auswahl zeigt Namen |
+| OPLS-DA | Lasso, „Selected Data", **sichtbare Selektion** (orange Marker), **Compare-Box Group A/B**, Fix für `Components > 1` | Compare-Box auf Paar stellen, Punkte klicken → orange markiert |
+| PCA Pro | T²/Q-Chart repariert (view-spanning Grenzlinien, Häkchen wirken, „in use: k" Anzeige) | Grenzlinien spannen über den Plot, Achsen deckt Daten + Grenzen |
+
+### Versionen dieser Sitzung
+
+0.1.3 Heatmap-Legende/Dendrogramm/Klick · 0.1.4 Mehrfachauswahl + Lasso +
+`Selected Data` (Volcano/Heatmap) · 0.1.5–0.1.6 Klick-Abstürze (Combo-Index,
+numpy-Array) · 0.1.7 Lasso im OPLS-DA + `selection.py` · 0.1.8 `Selected Data`
+im OPLS-DA · 0.1.9 PCA-Pro-T²/Q-Chart · 0.2.0 Heatmap-Gruppennamen/Dendrogramm/
+Verteilungs-Panel · 0.2.1 OPLS-DA-`n_components`-Absturz + Panelgröße ·
+0.2.2 Gruppennamen aus Codes (`tableutils.py`) · **0.2.3 NMR Peak Finding /
+Calibration / Peak Match (Rnmr1D) — vom Nutzer** · 0.2.4 OPLS-DA-Sichtbarkeit +
+Klassen-Auswahl.
+
+### Verifikation
+
+`make test` (Repo-Root) → 8 Suiten, 163 Prüfungen, headless. Neu bzw. gewachsen:
+`_test_tableutils.py` (13), `_test_selection.py` (11), `_test_pca.py` (18),
+`_test_heatmap.py` (47), `_test_owoplsda.py` (41), `_test_volcano.py` (10),
+`_test_opls_core.py` (13), `_test_suite.py` (10, inkl. Widget-Discovery).
+Kein CI — die Läufe sind ad-hoc.
+
+### Offen / zu wissen
+
+- **Paralleles Arbeiten:** Nutzer und Agent committen beide in dieses Repo. Vor
+  Versionsbumps `git log`/`git status` prüfen (0.2.3 war bereits vergeben).
+- Verteilungs-Panel zeigt die **Eingangsskala** (Rohflächen) — log2/z-Score wäre
+  auf Zuruf nachrüstbar.
+- Die vier historischen Einzel-Add-ons bleiben als Historie im Repo, sind aber
+  nicht installiert/veröffentlicht.
+
+
+---
+
 ## 2026-10-10 — Metabo Heatmap / Volcano / OPLS-DA: legend, dendrogram, selection
 
 Session: `@session:default/20261010_101141_7b2e62` (135 messages).
