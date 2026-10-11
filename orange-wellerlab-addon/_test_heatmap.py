@@ -355,6 +355,59 @@ check("neither canvas is crushed in a normal window",
       wsz.dist_canvas.height() >= 180 and wsz.canvas.height() >= 200,
       f"heatmap {wsz.canvas.height()} px / distribution {wsz.dist_canvas.height()} px")
 
+# --- 16) the distribution scale (input / log2 / z-score) --------------------
+wsc, _ = widget_with_spy()
+wsc.set_data(feature_table())
+wsc._on_canvas_click(wsc._ax_heat, 0.0, 0.0)
+b = wsc._built
+y = np.asarray(b["raw"][b["feats"].index(wsc._feature_of_interest())], dtype=float)
+
+
+def bars():
+    return [p.get_height() for p in wsc.dist_canvas.fig.axes[0].patches]
+
+
+def expected(values):
+    return [float(np.mean([v for v, g in zip(values, b["groups"]) if g == lv]))
+            for lv in b["levels"]]
+
+
+check("default scale is the input scale",
+      np.allclose(bars(), expected(y)), wsc.dist_canvas.fig.axes[0].get_ylabel())
+
+wsc.dist_scale = "log2"
+wsc._draw_distribution()
+check("log2 scale takes the log2 of the values",
+      np.allclose(bars(), expected(np.log2(y)))
+      and "log2" in wsc.dist_canvas.fig.axes[0].get_ylabel(),
+      wsc.dist_canvas.fig.axes[0].get_ylabel())
+
+wsc.dist_scale = "z-score"
+wsc._draw_distribution()
+z = (y - y.mean()) / y.std(ddof=1)
+check("z-score scale standardises the feature across the samples",
+      np.allclose(bars(), expected(z))
+      and "z-score" in wsc.dist_canvas.fig.axes[0].get_ylabel(),
+      wsc.dist_canvas.fig.axes[0].get_ylabel())
+
+# non-positive values cannot be logged -> fall back, and say so
+wneg, _ = widget_with_spy()
+wneg.set_data(feature_table())
+neg = np.asarray(wneg._built["raw"])
+neg[:, 0] = 0.0
+wneg.dist_scale = "log2"
+wneg._on_canvas_click(wneg._ax_heat, 0.0, 0.0)
+wneg._built["raw"][:, 0] = -1.0
+wneg._draw_distribution()
+check("log2 falls back to the input scale for non-positive values",
+      "input scale" in wneg.dist_canvas.fig.axes[0].get_ylabel(),
+      wneg.dist_canvas.fig.axes[0].get_ylabel())
+
+wsc.dist_scale = "Input"
+wsc._draw_distribution()
+check("switching back restores the input scale",
+      np.allclose(bars(), expected(y)), wsc.dist_canvas.fig.axes[0].get_ylabel())
+
 print()
 print(f"{len(fails)} FEHLGESCHLAGEN: {fails}" if fails else
       "Metabo Heatmap: alle Pruefungen bestanden")

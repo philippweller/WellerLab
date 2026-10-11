@@ -264,6 +264,41 @@ check("the highlighted markers sit on the selected points",
                                     w4._selection_indices().tolist()],
       f"{list(hl.getData()[0])}")
 
+# --- S-plot per predictive component (n_components > 1) ---------------------
+w_c = OWOPLSDA()
+for out_name in ("data", "components", "splot_data", "selected",
+                 "feature_values", "biomarkers", "selected_data"):
+    getattr(w_c.Outputs, out_name).send = lambda v: None
+w_c.n_components = 2
+w_c.set_data(data)
+app.processEvents()
+model = w_c.model
+check("S-plot offers one entry per predictive component",
+      [w_c.comp_combo.itemText(i) for i in range(w_c.comp_combo.count())]
+      == ["1", "2"] and w_c.comp_combo.isEnabled(),
+      f"{[w_c.comp_combo.itemText(i) for i in range(w_c.comp_combo.count())]}")
+check("component 1 is the default and matches p_pred[:, 0]",
+      np.allclose(w_c.splot_p, np.asarray(model.p_pred)[:, 0]))
+w_c.splot_comp = 1
+w_c._create_splot_data()
+check("switching the component switches the loadings",
+      np.allclose(w_c.splot_p, np.asarray(model.p_pred)[:, 1])
+      and not np.allclose(w_c.splot_p, np.asarray(model.p_pred)[:, 0]))
+check("p(corr) is recomputed for that component (|r| <= 1)",
+      np.all(np.abs(w_c.splot_pcorr) <= 1.0000001),
+      f"max {np.abs(w_c.splot_pcorr).max():.3f}")
+w_c._draw_splot()
+check("the title names the component",
+      "component 2/2" in w_c.plot_widget.getPlotItem().titleLabel.text,
+      w_c.plot_widget.getPlotItem().titleLabel.text[:40])
+
+w_c.n_components = 1
+w_c.settings_changed()          # the GUI path: rebuilds the learner, then refits
+app.processEvents()
+check("a single predictive component hides the selector",
+      not w_c.comp_combo.isEnabled()
+      and "component" not in w_c.plot_widget.getPlotItem().titleLabel.text)
+
 # ---------------------------------------------------------------- lasso
 w_lasso = OWOPLSDA()
 sd_box = {}

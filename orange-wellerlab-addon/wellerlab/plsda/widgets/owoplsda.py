@@ -83,6 +83,7 @@ class OWOPLSDA(OWBaseLearner):
     p1_frac = Setting(20)               # % of max|p1| used as threshold
     pcorr_thr = Setting(0.5)            # |p(corr)| threshold
     label_top = Setting(True)
+    splot_comp = Setting(0)             # predictive component shown in the S-plot
     lasso = Setting(False)              # left-drag selects a polygon, no panning
 
     want_main_area = True
@@ -151,7 +152,12 @@ class OWOPLSDA(OWBaseLearner):
         self.lbl_q2 = gui.label(qbox, self, "Q2 (cum): —")
         self.lbl_perm = gui.label(qbox, self, "Permutation: —")
 
-        thr = gui.vBox(self.controlArea, "S-Plot thresholds")
+        thr = gui.vBox(self.controlArea, "S-Plot")
+        self.comp_combo = gui.comboBox(
+            thr, self, "splot_comp", items=["1"], label="Component: ",
+            orientation=Qt.Horizontal, callback=self._thresholds_changed,
+            tooltip="Which predictive component the S-plot shows. Only relevant "
+                    "with more than one predictive component.")
         gui.spin(thr, self, "p1_frac", 0, 100, 1,
                  label="|p1| ≥ (% of max): ", alignment=Qt.AlignRight,
                  controlWidth=70, callback=self._thresholds_changed)
@@ -300,6 +306,7 @@ class OWOPLSDA(OWBaseLearner):
         # a new model invalidates any manual selection: fall back to thresholds
         self._manual = set()
         self._manual_mode = False
+        self._update_comp_combo()
         self._create_splot_data()
         self._update_quality_labels()
         self._apply_thresholds()
@@ -370,11 +377,29 @@ class OWOPLSDA(OWBaseLearner):
         else:
             self.lbl_perm.setText("Permutation: not computed")
 
+    def _update_comp_combo(self):
+        """Offer one entry per predictive component; disabled for a single one."""
+        n = max(1, int(getattr(self.model, "n_pred", 1) or 1))
+        self.comp_combo.blockSignals(True)
+        self.comp_combo.clear()
+        self.comp_combo.addItems([str(i + 1) for i in range(n)])
+        self.splot_comp = min(max(int(self.splot_comp), 0), n - 1)
+        self.comp_combo.setCurrentIndex(self.splot_comp)
+        self.comp_combo.blockSignals(False)
+        self.comp_combo.setEnabled(n > 1)
+
+    def _comp_label(self):
+        """'component 2/3, ' while the model has several predictive components."""
+        n = max(1, int(getattr(self.model, "n_pred", 1) or 1))
+        if n < 2:
+            return ""
+        return f"component {min(int(self.splot_comp) + 1, n)}/{n}, "
+
     def _create_splot_data(self):
-        """p1, p(corr) and VIP per feature."""
+        """p1, p(corr) and VIP per feature for the selected component."""
         model = self.model
         Xt = model.data_to_model_domain(self.data).X
-        p1, pcorr, _t = model.plot_data(Xt)
+        p1, pcorr, _t = model.plot_data(Xt, comp=int(self.splot_comp))
         self.splot_p = p1
         self.splot_pcorr = pcorr
         self.splot_feature_names = self._feature_names()
@@ -539,7 +564,8 @@ class OWOPLSDA(OWBaseLearner):
 
         n_rel = 0 if self._relevant is None else int(self._relevant.sum())
         self.plot_widget.setTitle(
-            f"S-Plot — {self._contrast_label()}{n_rel} relevant, "
+            f"S-Plot — {self._contrast_label()}{self._comp_label()}"
+            f"{n_rel} relevant, "
             f"{len(sel_idx)} selected "
             f"(grey = not relevant, red = higher, blue = lower)")
 

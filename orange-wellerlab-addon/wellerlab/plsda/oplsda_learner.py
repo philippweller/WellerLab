@@ -111,14 +111,18 @@ class OPLSDAModel(SklModelClassification):
             return "OPLSDAModel(unfitted)"
         return f"OPLSDAModel({self.core})"
 
-    def plot_data(self, X_train):
-        """S-plot coordinates (p1, p(corr), t_pred) for the given data."""
+    def plot_data(self, X_train, comp=0):
+        """S-plot coordinates (p1, p(corr), t_pred) for predictive component `comp`."""
         if self.core is None:
             return None, None, None
+        p1, pcorr = opls_core.splot_coords(self.core, X_train, comp)
         Xd = self._deflate(np.asarray(X_train, dtype=float))
         t_pred = Xd @ self.core.w_pred
-        return (self.core.p1, self.core.pcorr,
-                t_pred[:, 0] if t_pred.ndim > 1 else t_pred)
+        if t_pred.ndim > 1:
+            t = t_pred[:, int(np.clip(comp, 0, t_pred.shape[1] - 1))]
+        else:
+            t = t_pred
+        return p1, pcorr, t
 
     # ------------------------------------------------------------ diagnostics
     def quality(self):

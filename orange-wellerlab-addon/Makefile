@@ -4,13 +4,16 @@
 
 PY ?= python3
 
-.PHONY: test dist clean icons
+.PHONY: test dist clean icons widgets
 
 test:                      ## run all headless test suites (offscreen Qt)
 	$(PY) run_tests.py
 
 icons:                     ## regenerate the icon set from the shared template
 	$(PY) tools/gen_icons.py
+
+widgets:                   ## regenerate WIDGETS.md from the widget registry
+	$(PY) tools/gen_widgets_md.py
 
 dist:                      ## build sdist + wheel into dist/
 	$(PY) setup.py -q sdist bdist_wheel

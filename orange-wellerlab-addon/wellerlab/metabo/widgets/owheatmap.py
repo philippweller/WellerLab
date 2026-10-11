@@ -45,6 +45,7 @@ GROUP_COLORS = [
 
 #: group display modes (MetaboAnalyst-style group bar plus optional legend)
 AGGREGATIONS = ("Mean", "Median", "Sum")   # per-group summary in the distribution plot
+DIST_SCALES = ("Input", "log2", "z-score")  # value scale in the distribution plot
 
 GROUP_MODES = ("bar + legend", "bar + names", "bar only", "none")
 LEGEND_POSITIONS = ("right", "below")
@@ -88,6 +89,7 @@ class OWMetaboHeatmap(widget.OWWidget):
     legend_pos = Setting(LEGEND_POSITIONS[0])
     show_samples = Setting(True)
     agg = Setting("Mean")               # Mean | Median | Sum per group
+    dist_scale = Setting("Input")       # Input | log2 | z-score
     lasso = Setting(False)        # left-drag lasso selection instead of panning
 
     def __init__(self):
@@ -133,6 +135,13 @@ class OWMetaboHeatmap(widget.OWWidget):
                      sendSelectedValue=True,
                      tooltip="How the per-sample values are summarised per group "
                              "in the distribution plot below the heatmap.")
+        gui.comboBox(sbox, self, "dist_scale", items=DIST_SCALES,
+                     label="Scale:", callback=self._draw_distribution,
+                     sendSelectedValue=True,
+                     tooltip="Value scale of the distribution plot: as delivered, "
+                             "log2 (falls back to the input scale for "
+                             "non-positive values) or the feature's z-score "
+                             "across the samples.")
 
         gui.rubber(self.controlArea)
 
@@ -547,6 +556,30 @@ class OWMetaboHeatmap(widget.OWWidget):
         features, class and metas kept) - ready for the Data Table widget."""
         return select_features(self.data, self._selected)
 
+    def _dist_scale_name(self):
+        """The chosen distribution scale as a string ("Input" | "log2" | "z-score").
+
+        Orange's combo box stores the index unless sendSelectedValue is set; a
+        workflow saved by an older build may still hold an int.
+        """
+        mode = self.dist_scale
+        if isinstance(mode, int) and 0 <= mode < len(DIST_SCALES):
+            return DIST_SCALES[mode]
+        return mode if mode in DIST_SCALES else DIST_SCALES[0]
+
+    def _scaled_values(self, y):
+        """(values, axis note) for the distribution plot in the chosen scale."""
+        mode = self._dist_scale_name()
+        if mode == "log2":
+            if np.any(y <= 0):
+                return y, "input scale (log2 needs positive values)"
+            return np.log2(y), "log2"
+        if mode == "z-score":
+            sd = float(np.std(y, ddof=1))
+            return ((y - y.mean()) / sd if sd > 0 else y - y.mean(),
+                    "z-score across samples")
+        return y, "input scale"
+
     def _feature_of_interest(self):
         """The feature the details and distribution panels describe."""
         b = self._built
@@ -563,8 +596,8 @@ class OWMetaboHeatmap(widget.OWWidget):
 
         Bars: the chosen aggregate per group (Mean / Median / Sum). Dots: the
         single samples, jittered, so the spread within a group stays visible.
-        Values are on the input scale (whatever the upstream widget delivered,
-        e.g. log2 peak areas) - NOT z-scores.
+        The value scale is selectable: as delivered, log2 (only for positive
+        values) or the feature's z-score across the samples.
         """
         c = self.dist_canvas
         c.fig.clear()
@@ -581,6 +614,7 @@ class OWMetaboHeatmap(widget.OWWidget):
             return
 
         y = np.asarray(b["raw"][b["feats"].index(feat)], dtype=float)
+        y, scale_note = self._scaled_values(y)
         groups, levels = b["groups"], b["levels"]
         order = [lv for lv in levels if lv in set(groups)]
         vals = [[v for v, g in zip(y, groups) if g == lv] for lv in order]
@@ -596,7 +630,7 @@ class OWMetaboHeatmap(widget.OWWidget):
                        c="#2b2b2b", linewidths=0, zorder=3)
         ax.set_xticks(x)
         ax.set_xticklabels([_short(lv, 16) for lv in order], fontsize=8)
-        ax.set_ylabel(f"{self.agg.lower()} per group", fontsize=8)
+        ax.set_ylabel(f"{self.agg.lower()} per group ({scale_note})", fontsize=8)
         ax.set_title(_short(feat, 80), fontsize=9)
         ax.tick_params(labelsize=7)
         for side in ("top", "right"):

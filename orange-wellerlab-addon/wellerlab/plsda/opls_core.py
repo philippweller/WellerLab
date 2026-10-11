@@ -153,6 +153,26 @@ class OPLSModel:
                 f"R2X={self.r2x:.3f}, R2Y={self.r2y:.3f}{q})")
 
 
+def splot_coords(model, X, comp=0):
+    """(p1, p(corr)) of the S-plot for predictive component `comp` (0-based).
+
+    p(corr)_j = corr(x_j, t_comp) = p1_j * sd(t_comp) / sd(x_j) - the standard
+    recipe. Component 0 is what the model keeps as `p1`/`pcorr`; the other
+    components of a multi-component model are computed on demand so the S-plot can
+    be shown per component.
+    """
+    Xd = model.deflate(model._scale_x(np.asarray(X, dtype=float)))
+    P = np.atleast_2d(model.p_pred)
+    comp = int(np.clip(comp, 0, max(P.shape[1] - 1, 0)))
+    p1 = P[:, comp].copy()
+    T = np.atleast_2d(model.t_pred)
+    if T.shape[0] != Xd.shape[0] or T.shape[1] <= comp:
+        return p1, np.zeros_like(p1)          # no matching scores -> no p(corr)
+    sd_t = float(np.std(T[:, comp], ddof=1))
+    sd_x = np.std(Xd, axis=0, ddof=1)
+    return p1, np.where(sd_x > 1e-15, p1 * sd_t / sd_x, 0.0)
+
+
 # --------------------------------------------------------------------------
 # core fit
 # --------------------------------------------------------------------------
