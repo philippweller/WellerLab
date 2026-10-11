@@ -39,6 +39,9 @@ C_NS = (170, 176, 184, 170)
 C_UP = (178, 24, 43, 220)
 C_DOWN = (33, 102, 172, 220)
 C_SEL = (20, 20, 20, 255)
+#: selected points are re-drawn on top in this colour: a coloured point with
+#: only a thin dark pen was effectively invisible in the S-plot
+C_HL = (255, 145, 0, 255)
 MAX_LABELS = 12
 
 
@@ -66,8 +69,11 @@ class OWOPLSDA(OWBaseLearner):
 
     class Warning(OWBaseLearner.Warning):
         no_class = Msg("OPLS-DA needs a discrete class variable.")
+        same_class = Msg("Pick two different classes to compare.")
 
     # ------------------------------------------------------------- settings
+    group_a = Setting(0)                # compared classes (index into the values)
+    group_b = Setting(1)
     n_components = Setting(1)
     n_ortho = Setting(0)
     auto_ortho = Setting(True)
@@ -92,6 +98,7 @@ class OWOPLSDA(OWBaseLearner):
         self._relevant = None
         self._manual = set()            # manually selected feature names
         self._manual_mode = False       # False = follow the threshold set
+        self._input_data = None         # the table as delivered (unfiltered)
 
         self.plot_widget = LassoPlotWidget(title="S-Plot")
         self.plot_widget.on_lasso = self._lasso_select
@@ -107,6 +114,15 @@ class OWOPLSDA(OWBaseLearner):
 
     # ------------------------------------------------------------- controls
     def add_main_layout(self):
+        cbox = gui.vBox(self.controlArea, "Compare")
+        self.a_combo = gui.comboBox(
+            cbox, self, "group_a", items=[], label="Group A: ",
+            orientation=Qt.Horizontal, callback=self._class_changed)
+        self.b_combo = gui.comboBox(
+            cbox, self, "group_b", items=[], label="Group B: ",
+            orientation=Qt.Horizontal, callback=self._class_changed)
+        self.lbl_contrast = gui.label(cbox, self, "")
+
         box = gui.vBox(self.controlArea, "Optimization Parameters")
         gui.spin(box, self, "n_components", 1, 10, 1,
                  label="Predictive components: ", alignment=Qt.AlignRight,
@@ -158,6 +174,98 @@ class OWOPLSDA(OWBaseLearner):
 
         gui.rubber(self.controlArea)
         self.controlArea.layout().addStretch(1)
+
+    # ------------------------------------------------------------- classes
+    def _class_levels(self):
+        """The class values of the input, or [] for a non-discrete class."""
+        data = self._input_data
+        if data is None:
+            return []
+        cv = data.domain.class_var
+        return list(cv.values) if isinstance(cv, DiscreteVariable) else []
+
+    def _sel_classes(self):
+        """(index_a, index_b) of the compared classes, clamped to the values."""
+        levels = self._class_levels()
+        if len(levels) < 2:
+            return None, None
+        clamp = lambda i: min(max(int(i), 0), len(levels) - 1)      # noqa: E731
+        return clamp(self.group_a), clamp(self.group_b)
+
+    def _contrast_label(self):
+        """'ANF vs OPP (up = ANF), ' for the plot title, or ''."""
+        levels = self._class_levels()
+        ia, ib = self._sel_classes()
+        if ia is None or ia == ib:
+            return ""
+        # opls_core one-hots np.unique(y): the SMALLER code is the 'up' class
+        return (f"{levels[ib]} vs {levels[ia]} "
+                f"(up = {levels[min(ia, ib)]}), ")
+
+    def _filtered_data(self, data):
+        """Keep only the two compared classes.
+
+        OPLS-DA is a two-class contrast; with more classes the pair is chosen by
+        the user (MetaboAnalyst style) and everything downstream describes that
+        subset. Returns None when no valid pair is selected.
+        """
+        ia, ib = self._sel_classes()
+        if data is None or ia is None:
+            return data
+        if ia == ib:
+            return None
+        y = np.asarray(data.Y)
+        codes = (y if y.ndim == 1 else y[:, 0]).astype(int)
+        keep = np.isin(codes, [ia, ib])
+        if keep.all():
+            return data
+        subset = data[keep]
+        levels = self._class_levels()
+        subset.name = (f"{data.name or 'data'} - {levels[ia]} vs {levels[ib]}")
+        return subset
+
+    def _update_class_combos(self):
+        """(Re)fill both class combos from the input's class values."""
+        levels = self._class_levels()
+        for combo, name in ((self.a_combo, "group_a"), (self.b_combo, "group_b")):
+            combo.blockSignals(True)
+            combo.clear()
+            combo.addItems(levels)
+            combo.setCurrentIndex(min(max(int(getattr(self, name)), 0),
+                                      max(len(levels) - 1, 0)))
+            combo.blockSignals(False)
+            combo.setEnabled(len(levels) >= 2)
+        self._update_contrast_label()
+
+    def _class_changed(self):
+        """Refit after the user picked another class pair."""
+        self._refit_for_classes()
+
+    def _refit_for_classes(self):
+        """(Re)fit on the selected class pair, right away.
+
+        `super().set_data()` only stores the table (the signal machinery would
+        update the model later), so the refit is called explicitly - otherwise a
+        combo change left a stale model and a stale plot title.
+        """
+        subset = self._filtered_data(self._input_data)
+        self.Warning.same_class.clear()
+        if subset is None and self._input_data is not None:
+            self.Warning.same_class()           # same class picked twice
+        super().set_data(subset)
+        self.update_model()
+        self._update_contrast_label()
+
+    def _update_contrast_label(self):
+        """The muted line under the class combos."""
+        levels = self._class_levels()
+        contrast = self._contrast_label()       # "" when the pair is invalid
+        if len(levels) < 2:
+            self.lbl_contrast.setText("needs two classes")
+        elif not contrast:
+            self.lbl_contrast.setText("pick two different classes")
+        else:
+            self.lbl_contrast.setText("comparing " + contrast.rstrip(", "))
 
     def _sync_ortho_spin(self):
         """The orthogonal spinner is only meaningful without auto-optimisation."""
@@ -216,9 +324,14 @@ class OWOPLSDA(OWBaseLearner):
             o.send(None)
 
     def set_data(self, data):
-        """OWBaseLearner does not call update_model() when the input is removed,
-        so clear the outputs here to avoid showing stale results."""
-        super().set_data(data)
+        """Remember the input and fit on the two compared classes.
+
+        OWBaseLearner does not call update_model() when the input is removed, so
+        the empty case is cleared here.
+        """
+        self._input_data = data
+        self._update_class_combos()
+        self._refit_for_classes()
         if data is None:
             self.splot_p = self.splot_pcorr = self.splot_vip = None
             self._relevant = None
@@ -400,6 +513,19 @@ class OWOPLSDA(OWBaseLearner):
         self.scatter_item.sigClicked.connect(self._on_point_clicked)
         self.plot_widget.addItem(self.scatter_item)
 
+        # Mark the selection with a second, bigger marker on top: the per-point
+        # pen above is too subtle to see on 8 px points.
+        sel = np.array(sorted(sel_idx), dtype=int)
+        if sel.size:
+            p, pcorr = np.asarray(self.splot_p), np.asarray(self.splot_pcorr)
+            self.sel_item = pg.ScatterPlotItem(
+                x=p[sel], y=pcorr[sel], symbol="o", size=15,
+                brush=pg.mkBrush(*C_HL), pen=pg.mkPen(20, 20, 20, 230, width=1.2),
+                data=[tips[i] for i in sel], hoverable=True,
+                tip=lambda x, y, data: data)
+            self.sel_item.sigClicked.connect(self._on_point_clicked)
+            self.plot_widget.addItem(self.sel_item)
+
         if self.label_top:
             if self.splot_vip is not None:
                 rank = np.argsort(-self.splot_vip)
@@ -413,7 +539,8 @@ class OWOPLSDA(OWBaseLearner):
 
         n_rel = 0 if self._relevant is None else int(self._relevant.sum())
         self.plot_widget.setTitle(
-            f"S-Plot — {n_rel} relevant, {len(sel_idx)} selected "
+            f"S-Plot — {self._contrast_label()}{n_rel} relevant, "
+            f"{len(sel_idx)} selected "
             f"(grey = not relevant, red = higher, blue = lower)")
 
     # ------------------------------------------------------------- outputs
@@ -434,7 +561,12 @@ class OWOPLSDA(OWBaseLearner):
         score_names = [f"t_pred{i + 1}" if n_pred > 1 else "t_pred"
                        for i in range(n_pred)]
         ortho_names = [f"t_o{i + 1}" for i in range(model.n_ortho)]
-        prob_names = [f"p({class_var.name}={v})" for v in class_var.values]
+        # The model can cover a SUBSET of the class values (two-class contrast),
+        # so the probability columns and the predicted codes must come from the
+        # classes it was actually fitted on - using class_var.values raised
+        # "could not broadcast input array from shape (20,2) into shape (20,4)".
+        classes = np.asarray(model.classes).astype(int)
+        prob_names = [f"p({class_var.name}={class_var.values[c]})" for c in classes]
 
         new_attrs = data.domain.attributes + tuple(
             ContinuousVariable(n) for n in score_names + ortho_names)
@@ -455,7 +587,8 @@ class OWOPLSDA(OWBaseLearner):
                                        model.p_ortho[i].ravel())
                 aug.X[:, n0 + n_pred + i] = Xdef @ model.w_ortho[i].ravel()
         with aug.unlocked(aug.metas):
-            aug.metas[:, -len(prob_names) - 1] = pred_class.astype(float)
+            # pred_class indexes the model's columns -> map back to the class codes
+            aug.metas[:, -len(prob_names) - 1] = classes[pred_class].astype(float)
             aug.metas[:, -len(prob_names):] = probs
         aug.name = f"{data.name} - OPLS-DA scores"
         return aug
