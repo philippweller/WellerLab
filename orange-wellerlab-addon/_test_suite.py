@@ -45,21 +45,22 @@ registry = QtWidgetRegistry()
 WidgetDiscovery(registry).run(eps)
 
 discovered = registry.widgets()
-check("Orange discovers 15 widgets", len(discovered) == 15, f"{len(discovered)}")
+check("Orange discovers 16 widgets", len(discovered) == 16, f"{len(discovered)}")
 
 cats = [c for c in registry.categories() if c.name == "Weller Lab"]
 check("exactly one 'Weller Lab' category", len(cats) == 1, f"{len(cats)}")
 
 if cats:
     in_cat = registry.widgets(category=cats[0])
-    check("the category is NOT empty", len(in_cat) == 15, f"{len(in_cat)} Widgets")
+    check("the category is NOT empty", len(in_cat) == 16, f"{len(in_cat)} Widgets")
     names = {w.name for w in in_cat}
     expect = {"PCA Pro", "PLS-DA", "OPLS-DA",
               "Metabo Feature Table", "Metabo Preprocess", "Metabo Feature Filter",
               "Metabo Univariate Stats", "Metabo Heatmap", "Metabo Volcano",
               "NMR Baseline Correction", "NMR Binning (Bucketing)",
               "NMR Region Exclusion", "NMR Filter (Savitzky-Golay)",
-              "NMR Normalization", "NMR Reference & Alignment"}
+              "NMR Normalization", "NMR Reference & Alignment",
+              "NMR Peak Finding"}
     check("all expected widget names present", names == expect,
           f"fehlend={sorted(expect - names)} unerwartet={sorted(names - expect)}")
     check("'PCA Pro' renamed, no 'PCA Weller' left",
