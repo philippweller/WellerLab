@@ -10,63 +10,15 @@ which on macOS means Orange.app's embedded interpreter rather than /usr/bin/pyth
 """
 import argparse
 import os
-import platform
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from orange_python import find_orange_python, native     # noqa: E402  (shared helper)
 SUITES = ("_test_opls_core.py", "_test_owoplsda.py", "_test_suite.py",
           "_test_heatmap.py", "_test_volcano.py", "_test_selection.py",
           "_test_pca.py", "_test_tableutils.py")
-
-
-def _apple_silicon():
-    try:
-        return subprocess.run(["sysctl", "-n", "hw.optional.arm64"],
-                              capture_output=True, text=True, timeout=10
-                              ).stdout.strip() == "1"
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def native(cmd):
-    """Force native execution of an universal binary on Apple Silicon.
-
-    An x86_64 parent (a Rosetta conda python) makes universal children pick the
-    x86_64 slice, where Orange's arm64-only numpy extension fails to load with
-    "you should not try to import numpy from its source directory".
-    """
-    if platform.system() == "Darwin" and _apple_silicon():
-        return ["/usr/bin/arch", "-arm64", *cmd]
-    return list(cmd)
-
-
-def imports_orange(exe):
-    try:
-        return subprocess.run(native([exe, "-c", "import Orange"]),
-                              capture_output=True, timeout=60).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        return False
-
-
-def find_orange_python():
-    """Best-effort lookup of an interpreter that can import Orange."""
-    if imports_orange(sys.executable):
-        return sys.executable
-    system = platform.system().lower()
-    cands = []
-    if system == "darwin":
-        base = "/Applications/Orange.app/Contents/Frameworks/Python.framework/Versions"
-        if os.path.isdir(base):
-            for v in sorted(os.listdir(base), reverse=True):
-                cands += [os.path.join(base, v, "bin", "python3"),
-                          os.path.join(base, v, "bin", "python")]
-        cands += ["/Applications/Orange.app/Contents/MacOS/python"]
-    elif system == "windows":
-        cands += [r"C:\Program Files\Orange\python.exe",
-                  os.path.expandvars(r"%LOCALAPPDATA%\Programs\Orange\python.exe")]
-    cands += ["/usr/bin/python3", "python3"]
-    return next((c for c in cands if os.path.exists(c) and imports_orange(c)), None)
 
 
 def main():

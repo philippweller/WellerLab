@@ -12,18 +12,25 @@ import sys
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from importlib import metadata as md
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+sys.path.insert(0, ROOT)
 
-from AnyQt.QtWidgets import QApplication
+# needs Orange's interpreter (AnyQt/orangecanvas); re-runs itself when started with
+# a plain python3, so `make widgets` works with whatever python3 is on PATH
+from orange_python import reexec_if_needed          # noqa: E402
+
+reexec_if_needed("AnyQt")
+
+from importlib import metadata as md                 # noqa: E402
+
+from AnyQt.QtWidgets import QApplication             # noqa: E402
 
 app = QApplication.instance() or QApplication(sys.argv or ["gen"])
 
 from orangecanvas.registry.qt import QtWidgetRegistry          # noqa: E402
 from orangewidget.workflow.discovery import WidgetDiscovery    # noqa: E402
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
-sys.path.insert(0, ROOT)
 from wellerlab import __version__                              # noqa: E402
 
 OUT = os.path.join(ROOT, "WIDGETS.md")
