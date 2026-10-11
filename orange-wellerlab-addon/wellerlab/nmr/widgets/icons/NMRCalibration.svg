@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="8" fill="#2E7D32"/>
+  <g><polyline points="6,33 12,33 14,27 16,33 20,33 21,29 22,33 27,33" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>
+  <g><path d="M31 33 L31 15" stroke="#FFD54F" stroke-width="2.5"/></g>
+  <g><path d="M28 18 L31 15 L34 18" fill="none" stroke="#FFD54F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g><path d="M28 30 L31 33 L34 30" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <text x="24" y="45" font-family="Helvetica,Arial,sans-serif" font-size="7" fill="#fff"
+        fill-opacity="0.85" text-anchor="middle">CALIB</text>
+</svg>

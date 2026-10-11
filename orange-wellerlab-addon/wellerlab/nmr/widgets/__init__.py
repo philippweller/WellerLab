@@ -7,6 +7,8 @@ from .ownmrfilter import OWFilter
 from .ownmrexclude import OWExclusion
 from .ownmrreference import OWReference
 from .ownmrpeakfinding import OWPeakFinding
+from .ownmrcalibration import OWCalibration
+from .ownmrpeakmatch import OWPeakMatch
 
 __all__ = [
     "OWBinning",
@@ -16,4 +18,6 @@ __all__ = [
     "OWExclusion",
     "OWReference",
     "OWPeakFinding",
+    "OWCalibration",
+    "OWPeakMatch",
 ]

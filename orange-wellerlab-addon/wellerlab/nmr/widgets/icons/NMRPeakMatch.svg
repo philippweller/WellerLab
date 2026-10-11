@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="8" fill="#2E7D32"/>
+  <g><polyline points="6,33 12,33 14,26 16,33 20,33 21,28 22,33 27,33" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>
+  <g><circle cx="15" cy="25" r="2.2" fill="#FFD54F"/></g>
+  <g><circle cx="33" cy="20" r="2.2" fill="#FFD54F"/></g>
+  <g><path d="M17 26 L31 19" stroke="#fff" stroke-width="1.5" stroke-dasharray="2 2" opacity="0.75"/></g>
+  <text x="24" y="45" font-family="Helvetica,Arial,sans-serif" font-size="7" fill="#fff"
+        fill-opacity="0.85" text-anchor="middle">MATCH</text>
+</svg>
