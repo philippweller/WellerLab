@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="8" fill="#2E7D32"/>
+  <g><path d="M9 30 L13 30 L15 22 L17 30 L20 30 L22 26 L24 30 L27 30" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/></g>
+  <g><path d="M34 10 L34 24" fill="none" stroke="#FFD54F" stroke-width="2.5"/><path d="M29 19 L34 24.5 L39 19" fill="none" stroke="#FFD54F" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></g>
+  <g><line x1="8" y1="34" x2="40" y2="34" stroke="#fff" stroke-width="1.4" opacity="0.9"/></g>
+  <text x="24" y="45" font-family="Helvetica,Arial,sans-serif" font-size="7" fill="#fff"
+        fill-opacity="0.85" text-anchor="middle">IMP</text>
+</svg>

@@ -50,8 +50,9 @@ ICONS = {
                ("UnivariateStats", "UNI"), ("Heatmap", "HM"), ("Volcano", "VOL")],
     "plsda": [("PLSDA", "PLS"), ("OPLSDA", "OPLS")],
     "pca": [("PCAPro", "PRO")],
-    "nmr": [("NMRBaseline", "BASE"), ("NMRBinning", "BIN"), ("NMRExclude", "EXCL"),
-            ("NMRFilter", "FILT"), ("NMRNormalize", "NORM"), ("NMRReference", "REF")],
+    "nmr": [("NMRImport", "IMP"), ("NMRBaseline", "BASE"), ("NMRBinning", "BIN"),
+            ("NMRExclude", "EXCL"), ("NMRFilter", "FILT"), ("NMRNormalize", "NORM"),
+            ("NMRReference", "REF")],
 }
 
 # category icon: the four family colours as a 2x2 tile

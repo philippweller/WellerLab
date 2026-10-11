@@ -1,5 +1,6 @@
 """Widget definitions for wellerlab.nmr (NMR Preprocessing)."""
 
+from .ownmrimport import OWNMRImport
 from .ownmrbinning import OWBinning
 from .ownmrnormalize import OWNormalization
 from .ownmrbaseline import OWBaseline
@@ -17,6 +18,7 @@ __all__ = [
     "OWFilter",
     "OWExclusion",
     "OWReference",
+    "OWNMRImport",                   # raw-data source: Bruker / Varian-Agilent
     "OWPeakFinding",
     "OWCalibration",
     "OWPeakMatch",
