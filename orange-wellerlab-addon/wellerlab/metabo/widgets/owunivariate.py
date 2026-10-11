@@ -14,6 +14,7 @@ from Orange.widgets.settings import Setting
 from Orange.widgets.widget import Input, Output
 
 from .. import metabo_core as mc
+from ...tableutils import group_labels
 
 
 class OWUnivariateStats(widget.OWWidget):
@@ -85,14 +86,10 @@ class OWUnivariateStats(widget.OWWidget):
 
     def _read_groups(self):
         from AnyQt.QtGui import QStandardItem, QStandardItemModel
-        gvar = self.data.domain["group"] if "group" in self.data.domain else None
-        if gvar is None:
-            self._groups = []
-            self._groups_list = []
+        groups, self._groups_list = group_labels(self.data)
+        self._groups = groups if groups is not None else []
+        if not self._groups_list:
             return
-        vals = self.data.metas[:, self.data.domain.metas.index(gvar)]
-        self._groups = [str(v) for v in vals]
-        self._groups_list = list(dict.fromkeys(self._groups))
         # populate the base combo
         model = QStandardItemModel()
         for g in self._groups_list:

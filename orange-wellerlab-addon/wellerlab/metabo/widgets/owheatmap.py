@@ -20,7 +20,7 @@ import numpy as np
 from AnyQt.QtCore import Qt
 from AnyQt.QtWidgets import QApplication, QLabel
 
-from Orange.data import (Table, Domain, ContinuousVariable, DiscreteVariable,
+from Orange.data import (Table, Domain, ContinuousVariable,
                          StringVariable)
 from Orange.widgets import widget, gui
 from Orange.widgets.settings import Setting
@@ -32,6 +32,7 @@ from scipy.cluster.hierarchy import linkage, dendrogram
 from .. import metabo_core as mc
 from ._plot import PlotCanvas, attach_toolbar, draggable, points_in_polygon
 from ...selection import select_features
+from ...tableutils import group_labels
 
 CMAP = LinearSegmentedColormap.from_list(
     "rdbu_r",
@@ -204,53 +205,14 @@ class OWMetaboHeatmap(widget.OWWidget):
             pos_widget.setEnabled(self._legend_is_box())
 
     # ------------------------------------------------------------------ data
-    def _labels_of(self, var):
-        """Per-sample labels for a variable, resolving discrete CODES to names."""
-        d = self.data.domain
-        if var in d.metas:
-            vals = self.data.metas[:, d.metas.index(var)]
-        elif var in d.class_vars:
-            Y = np.asarray(self.data.Y)
-            # Orange stores Y 1-D for a single class variable
-            vals = Y if Y.ndim == 1 else Y[:, d.class_vars.index(var)]
-        else:
-            vals = np.asarray(self.data.X)[:, d.attributes.index(var)]
-        if isinstance(var, DiscreteVariable):
-            return [str(var.values[int(v)])
-                    if np.isfinite(v) and 0 <= int(v) < len(var.values) else "?"
-                    for v in vals]
-        return [str(v) for v in vals]
-
     def _read_groups(self):
-        """(per-sample group labels, levels) for the colour bar / legend.
+        """(per-sample labels, levels) for the colour bar / legend.
 
-        A 'group' column often arrives as numeric CODES (a discrete variable
-        stored in metas/Y keeps codes, so `str(v)` gives "0.0", "2.0", …) - that
-        produced a bar labelled with numbers instead of names. Resolve discrete
-        codes to their value names and, if the group column is still purely
-        numeric, fall back to a discrete class variable, which usually carries
-        the study group.
+        Delegates to the shared helper: a categorical 'group' column often
+        carries CODES in the data array, which must be resolved to the value
+        names (see `wellerlab/tableutils.py`).
         """
-        if self.data is None or "group" not in self.data.domain:
-            return None, []
-        labels = self._labels_of(self.data.domain["group"])
-
-        def numeric(vals):
-            for v in vals:
-                try:
-                    float(v)
-                except (TypeError, ValueError):
-                    return False
-            return True
-
-        if numeric(labels):
-            for cv in self.data.domain.class_vars:
-                if isinstance(cv, DiscreteVariable):
-                    alt = self._labels_of(cv)
-                    if not numeric(alt):
-                        labels = alt
-                        break
-        return labels, list(dict.fromkeys(labels))
+        return group_labels(self.data)
 
     def _rows_from_results(self):
         """(score, feature) pairs from the Results table (ascending p), or None."""

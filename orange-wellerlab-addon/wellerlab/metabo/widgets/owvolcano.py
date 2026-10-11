@@ -33,6 +33,7 @@ from .. import metabo_core as mc
 from .owheatmap import GROUP_COLORS
 from ._plot import PlotCanvas, attach_toolbar, draggable, points_in_polygon
 from ...selection import select_features
+from ...tableutils import group_labels
 
 NS_COLOUR = "#9e9e9e"
 UP_COLOUR = "#d62728"
@@ -411,12 +412,9 @@ class OWVolcano(widget.OWWidget):
 
     # ------------------------------------------------------------------ dist
     def _groups_of_data(self):
-        if self.data is None or "group" not in self.data.domain:
-            return None, []
-        gvar = self.data.domain["group"]
-        vals = [str(v) for v in
-                self.data.metas[:, self.data.domain.metas.index(gvar)]]
-        return vals, list(dict.fromkeys(vals))
+        """(per-sample labels, levels) via the shared helper - resolves the
+        CODES a categorical column carries in the data array to value names."""
+        return group_labels(self.data)
 
     def _draw_dist(self):
         fig = self.dist_canvas.fig
