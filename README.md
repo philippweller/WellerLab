@@ -37,7 +37,7 @@ aufgegangen; ihre alten Ordner bleiben als Historie im Repo, werden aber nicht m
 curl -fsSL https://raw.githubusercontent.com/philippweller/WellerLab/main/orange-install.py -o orange-install.py
 
 # Dann installieren (ein Paket, eine Kategorie):
-python3 orange-install.py            # = wellerlab (alle 16 Widgets)
+python3 orange-install.py            # = wellerlab (alle 18 Widgets)
 python3 orange-install.py wellerlab  # dasselbe, explizit
 python3 orange-install.py all        # die gesamte Suite
 

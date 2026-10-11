@@ -40,8 +40,8 @@ BRANCH = "main"
 # aliases to the merged add-on so existing commands keep working; 'all' installs
 # each unique subdirectory once.
 _MERGED = ("orange-wellerlab-addon", "wellerlab",
-           "Weller Lab -> 16 widgets: Metabo (6), PLS-DA/OPLS-DA (2), "
-           "PCA Pro (1), NMR (7)")
+           "Weller Lab -> 18 widgets: Metabo (6), PLS-DA/OPLS-DA (2), "
+           "PCA Pro (1), NMR (9)")
 ADDONS = {
     "wellerlab": _MERGED,
     "suite": _MERGED,
