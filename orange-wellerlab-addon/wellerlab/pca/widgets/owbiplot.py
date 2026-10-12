@@ -1,8 +1,10 @@
 """Biplot widget: scores and loadings in one plot, features selectable.
 
-Works with PCA Pro, PLS-DA and OPLS-DA: connect the scores (PC1.., Comp 1..,
-t_pred..) and the loadings ("Components (loadings)" / "Components") of either
-model, plus the (preprocessed) data table. Samples are drawn as points, every
+Works with Orange's built-in PCA, PCA Pro, PLS-DA and OPLS-DA: connect the scores
+(PC1.., Comp 1.., t_pred..) and the loadings ("Components"/"Components (loadings)")
+of either model, plus the (preprocessed) data table. The component names are taken
+from the loadings meta column where the widget provides one (PC1, PC2, ...) and the
+loading columns are lined up with the score columns by name. Samples are drawn as points, every
 feature as an arrow, and the arrows can be selected the same way as in the Volcano
 or the S-plot: click, shift-click or lasso - the selection leaves through
 "Selected Data" for a Data Table, a heat map or a Volcano.
@@ -52,8 +54,12 @@ def read_loadings(table, data=None):
     known = {a.name for a in data.domain.attributes} if data is not None else set()
 
     if known and set(attrs) & known:
-        # features in the columns -> components are the rows
-        return ([f"Comp {i + 1}" for i in range(X.shape[0])], attrs, X.T)
+        # features in the columns -> components are the rows. Both PCA widgets
+        # label them in a string meta column ("components"/"component": PC1, ...).
+        components = (meta_names if meta_names is not None
+                      and len(meta_names) == X.shape[0]
+                      else [f"Comp {i + 1}" for i in range(X.shape[0])])
+        return (components, attrs, X.T)
     if meta_names is not None and len(meta_names) == X.shape[0]:
         components = attrs
         return (components, meta_names, X)
@@ -64,8 +70,9 @@ def read_loadings(table, data=None):
 
 class OWBiplot(widget.OWWidget):
     name = "Biplot"
-    description = ("Scores and loadings in one plot (PCA Pro, PLS-DA, OPLS-DA) "
-                   "with click / shift-click / lasso selection of the features.")
+    description = ("Scores and loadings in one plot - from Orange's built-in PCA, "
+                   "PCA Pro, PLS-DA or OPLS-DA - with click / shift-click / lasso "
+                   "selection of the features.")
     icon = "icons/Biplot.svg"
     priority = 90
     keywords = ["biplot", "scores", "loadings", "pca", "pls", "opls", "ordination",
@@ -112,6 +119,7 @@ class OWBiplot(widget.OWWidget):
         self._feat_names = []
         self._P = None                 # (n_features, n_components)
         self._selected = []            # selected feature names
+        self._variances = {}           # component name -> explained variance
         self._cell = None              # last clicked sample (row, name)
         self._ax_plot = None
 
@@ -192,6 +200,26 @@ class OWBiplot(widget.OWWidget):
             return
 
         components, self._feat_names, self._P = read_loadings(self.loadings, self.data)
+        # Line the loading columns up with the score columns BY NAME, so the arrows
+        # always belong to the components the axes show (positional order is a
+        # coincidence between widgets). Falls back to the given order when none of
+        # the names match.
+        index = {name: j for j, name in enumerate(components)}
+        if any(name in index for name in self._score_names):
+            aligned = np.zeros((self._P.shape[0], len(self._score_names)))
+            for j, name in enumerate(self._score_names):
+                k = index.get(name)
+                if k is not None:
+                    aligned[:, j] = self._P[:, k]
+            self._P = aligned
+
+        self._variances = {}
+        for var in self.scores.domain.attributes:
+            value = (var.attributes or {}).get("variance")
+            if value is not None:
+                self._variances[var.name] = float(value)
+        self._read_variance_meta()
+
         known = {a.name for a in self.data.domain.attributes}
         keep = [i for i, n in enumerate(self._feat_names) if n in known]
         if not keep:
@@ -307,15 +335,31 @@ class OWBiplot(widget.OWWidget):
         self.canvas.after_draw(ax, new_data=True)
         self.canvas.draw_idle()
 
-    @staticmethod
-    def _axis_label(variable):
-        parts = [variable.name]
-        variance = (variable.attributes or {}).get("variance")
-        if variance is not None:
+    def _read_variance_meta(self):
+        """Orange's built-in PCA puts the variance into the Components table."""
+        table = self.loadings
+        if table is None:
+            return
+        names = None
+        variance_column = None
+        for i, meta in enumerate(table.domain.metas):
+            if meta.is_string and names is None:
+                names = [str(v) for v in table.metas[:, i]]
+            elif meta.name == "variance":
+                variance_column = i
+        if names is None or variance_column is None or len(names) != len(table):
+            return
+        for j, name in enumerate(names):
             try:
-                parts.append(f"({float(variance) * 100:.1f}%)")
+                self._variances.setdefault(name, float(table.metas[j, variance_column]))
             except (TypeError, ValueError):
                 pass
+
+    def _axis_label(self, variable):
+        parts = [variable.name]
+        variance = self._variances.get(variable.name)
+        if variance is not None:
+            parts.append(f"({variance * 100:.1f}%)")
         return " ".join(parts)
 
     # ------------------------------------------------------------- selection

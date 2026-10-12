@@ -10,6 +10,7 @@ detect that, draw arrows, and turn a click or a lasso into a feature selection.
 """
 import os
 import sys
+import time
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -55,6 +56,26 @@ data = Table.from_numpy(
     metas=np.array([[f"s{i}"] for i in range(N)], dtype=object))
 
 
+def warns(widget, fragment):
+    """Is a message with `fragment` currently active on the widget?"""
+    return any(fragment.lower() in str(m).lower() for m in widget.Warning.active)
+
+
+def pump(condition, tries=100):
+    """Pump the event loop until `condition()` holds.
+
+    Orange sends outputs through a deferred commit (a zero-timer), so a single
+    processEvents() is not guaranteed to have flushed it - which made this suite
+    flaky in the runner while passing when run on its own.
+    """
+    for _ in range(tries):
+        app.processEvents()
+        if condition():
+            return True
+        time.sleep(0.01)
+    return condition()
+
+
 def spy(widget, names):
     box = {}
     for name in names:
@@ -70,7 +91,7 @@ def biplot(scores, loadings, data_=data):
     w.set_data(data_)
     w.set_scores(scores)
     w.set_loadings(loadings)
-    app.processEvents()
+    pump(lambda: w._ax_plot is not None)
     return w, box
 
 
@@ -78,7 +99,8 @@ def biplot(scores, loadings, data_=data):
 pca = OWPCAWell()
 pca_box = spy(pca, ("scores", "components"))
 pca.set_data(data)
-app.processEvents()
+pump(lambda: pca_box.get("scores") is not None
+     and pca_box.get("components") is not None)
 check("PCA Pro emits scores and loadings",
       pca_box.get("scores") is not None and pca_box.get("components") is not None)
 
@@ -133,12 +155,45 @@ check("clicking empty space clears the selection",
       (w._on_click(w._ax_plot, 1e6, 1e6) or True) and w._selected == [],
       f"{w._selected}")
 
+# ---------------------------------------------------------------- Orange PCA
+from Orange.widgets.unsupervised.owpca import OWPCA
+
+opca = OWPCA()
+opca_box = spy(opca, ("transformed_data", "components"))
+opca.set_data(data)
+pump(lambda: opca_box.get("components") is not None)
+check("Orange's built-in PCA emits transformed data and components",
+      opca_box.get("transformed_data") is not None
+      and opca_box.get("components") is not None,
+      f"{None if opca_box.get('components') is None else len(opca_box['components'])} components")
+
+w5, box5 = biplot(opca_box["transformed_data"], opca_box["components"])
+check("biplot works with Orange's built-in PCA",
+      len(w5._feat_names) == P and len(w5._arrow_tips()) == min(int(w5.max_arrows), P),
+      f"{len(w5._feat_names)} arrows for {P} features")
+check("component names come from the Components meta (PC1, PC2, ...)",
+      [w5.x_combo.itemText(i) for i in range(w5.x_combo.count())][:2] == ["PC1", "PC2"],
+      f"{[w5.x_combo.itemText(i) for i in range(w5.x_combo.count())][:4]}")
+check("the axis label carries the variance from the Components table",
+      "%" in w5._axis_label(w5.scores.domain.attributes[0]),
+      w5._axis_label(w5.scores.domain.attributes[0]))
+tips5 = w5._arrow_tips()
+strong5 = int(np.argmax(np.linalg.norm(tips5, axis=1)))
+w5._on_click(w5._ax_plot, tips5[strong5, 0], tips5[strong5, 1])
+check("arrow selection works with the built-in PCA too",
+      w5._selected == [w5._feat_names[strong5]], f"{w5._selected}")
+check("Selected Data from the built-in PCA keeps class and metas",
+      len(box5["selected_data"]) == N
+      and box5["selected_data"].domain.class_var is not None
+      and "sample" in {m.name for m in box5["selected_data"].domain.metas})
+
 # ---------------------------------------------------------------- OPLS-DA
 opls = OWOPLSDA()
 opls_box = spy(opls, ("scores", "components"))
 opls.n_components = 2               # a biplot needs two components
 opls.set_data(data)
-app.processEvents()
+pump(lambda: opls_box.get("scores") is not None
+     and opls_box.get("components") is not None)
 check("OPLS-DA emits a dedicated scores table (score columns only)",
       opls_box.get("scores") is not None
       and all(a.name.startswith(("t_pred", "t_o"))
@@ -158,7 +213,7 @@ check("OPLS-DA component names show up in the selector",
 pls = OWPLSDA()
 pls_box = spy(pls, ("scores", "components"))
 pls.set_data(data)
-app.processEvents()
+pump(lambda: pls_box.get("scores") is not None)
 check("PLS-DA emits a scores table with the T columns",
       pls_box.get("scores") is not None
       and all(a.name[0] in "TU" for a in pls_box["scores"].domain.attributes),
@@ -171,15 +226,16 @@ check("biplot accepts PLS-DA loadings too",
 # ---------------------------------------------------------------- guards
 w4 = OWBiplot()
 w4.set_data(data)
-app.processEvents()
+pump(lambda: bool(w4.canvas.fig.axes))
 check("without scores/loadings the widget warns instead of crashing",
-      bool(getattr(w4.Warning, "no_scores", None)) or True)
+      warns(w4, "Connect the scores"))
 one = Table.from_numpy(Domain([ContinuousVariable("PC1")]), X=data.X[:, :1])
 w4.set_scores(one)
 w4.set_loadings(pca_box["components"])
 app.processEvents()
+pump(lambda: warns(w4, "two components"))
 check("one component is not enough for a biplot",
-      bool(getattr(w4.Warning, "one_component", None)) or True)
+      warns(w4, "two components"))
 check("read_loadings tolerates empty input", read_loadings(None)[2] is None)
 
 print()

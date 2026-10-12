@@ -352,7 +352,7 @@ try:
           w5._auto_key is None and abs(cols5[int(np.argmax(values5))] - 3.55) < 0.05,
           f"@ {cols5[int(np.argmax(values5))]:.3f} ppm")
     check("and the widget says so",
-          bool(getattr(w5.Warning, "no_reference", None)) or True)   # Msg is a class attr
+          any("tms" in str(m).lower() for m in w5.Warning.active))
     check("search window is a setting",
           abs(w5.search_window - 0.5) < 1e-9)
 
