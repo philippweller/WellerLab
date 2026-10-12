@@ -29,7 +29,8 @@ import numpy as np
 __all__ = [
     "Dataset", "find_datasets", "read_vendor", "read_procpar", "read_acqus",
  "apodize", "zero_fill", "auto_phase", "phase_correct", "poly_baseline",
- "process_fid", "ppm_axis", "align_to_reference", "SOLVENT_PPM",
+ "process_fid", "ppm_axis", "align_to_reference", "peak_in_region",
+ "align_region", "split_sample_experiment", "describe", "SOLVENT_PPM",
  ]
 
 #: common referencing standards (ppm)
@@ -38,6 +39,7 @@ SOLVENT_PPM = {
     "water": 4.70, "HDO": 4.70,
     "DMSO": 2.50, "acetone": 2.05, "chloroform": 7.26, "CHCl3": 7.26,
     "methanol": 3.31, "acetonitrile": 1.94,
+    "formate": 8.44, "imidazole": 8.16, "dioxane": 3.75,
 }
 
 
@@ -422,6 +424,63 @@ def align_to_reference(ppm, spectrum, target_ppm, window=0.5):
     found = ppm[mask][int(np.argmax(np.abs(values)))]
     delta = float(found - target_ppm)
     return ppm - delta, delta
+
+
+def peak_in_region(ppm, spectrum, region):
+    """ppm of the strongest peak inside `region`, or None.
+
+    `region` is a (low, high) tuple in ppm - what the user drags in the preview.
+    """
+    ppm = np.asarray(ppm, dtype=float)
+    low, high = sorted(float(v) for v in region)
+    mask = (ppm >= low) & (ppm <= high)
+    if not mask.any():
+        return None
+    values = np.asarray(spectrum, dtype=float)[mask]
+    return float(ppm[mask][int(np.argmax(np.abs(values)))])
+
+
+def align_region(ppm, spectrum, region, target_ppm):
+    """Shift the axis so the strongest peak inside `region` lands on `target_ppm`.
+
+    This is the interactive referencing route: the user marks the signal (CHCl3,
+    TSP, ...) with the mouse and names the standard, no assumption about where the
+    peak *should* be is needed. Returns ``(ppm, delta, found)``; `found` is None
+    when the region holds no data.
+    """
+    found = peak_in_region(ppm, spectrum, region)
+    if found is None:
+        return np.asarray(ppm, dtype=float), 0.0, None
+    delta = float(found - float(target_ppm))
+    return np.asarray(ppm, dtype=float) - delta, delta, found
+
+
+def split_sample_experiment(name):
+    """('BASF_Probe7_PROTON_01.fid') -> ('BASF_Probe7', 'PROTON_01').
+
+    The trailing one or two underscore-separated tokens are the experiment; what
+    is left is the sample. A name without an obvious experiment keeps the whole
+    stem as the sample.
+    """
+    stem = name[:-4] if name.lower().endswith(".fid") else name
+    parts = [p for p in stem.split("_") if p]
+    if len(parts) >= 3:
+        return "_".join(parts[:-2]), "_".join(parts[-2:])
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return stem, stem
+
+
+def describe(dataset):
+    """(sample, experiment) for a dataset, for grouping a study into a matrix.
+
+    Varian/Agilent: from the `*.fid` folder name. Bruker: the dataset folder is the
+    experiment number and its parent is the sample.
+    """
+    if dataset.vendor == "varian":
+        return split_sample_experiment(dataset.name)
+    parent = os.path.basename(os.path.dirname(dataset.path))
+    return (parent or dataset.name, dataset.name)
 
 
 def process_fid(fid, meta, lb_hz=0.3, window="exponential", zero=1, phase="auto",

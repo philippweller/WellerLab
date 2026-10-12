@@ -1,19 +1,23 @@
 """NMR Raw Import: Bruker and Varian/Agilent raw data -> spectra table.
 
 Reads every dataset below a folder, processes it (window, zero filling, FFT,
-phase, baseline, referencing) and emits a table whose columns are the ppm values
+phase, baseline, referencing) and emits one table whose columns are the ppm values
 - the convention the other NMR widgets here expect (`nmr_utils.get_ppm_values`
-parses the attribute names).
+parses the attribute names). Several spectra of the same kind end up as one row
+per sample, ready for a multivariate analysis.
 
 Reading and numerics live in `wellerlab/nmr/nmr_io.py` (Qt-free, testable); this
 widget drives them.
 
-Two things that matter in practice and are therefore explicit controls:
+Three things that matter in practice, all explicit controls:
+* **experiment filter** - a study folder holds several experiments per sample
+  (PROTON, PRESAT, ...). Pick one and you get a proper matrix (samples x ppm)
+  instead of every experiment mixed together.
 * **group delay** - Varian/Agilent FIDs start with the digital-filter transient
-  (68 points); dropping it is what turns the broad envelope into sharp lines.
-* **referencing** - the axis comes from the acquisition parameters (carrier in
-  the window centre). Instruments reference differently, so the axis is made
-  absolute here: align a standard (TSP/DSS/water/...) or shift by hand.
+  (68 points); dropping it turns the broad envelope into sharp lines.
+* **referencing** - the axis from the acquisition parameters is not absolute.
+  Either drag the signal in the preview (e.g. CHCl3) and name the standard, or
+  let it look for the strongest peak within +/-0.5 ppm of the standard.
 """
 import os
 
@@ -33,48 +37,58 @@ from ._plot_spectrum import SpectrumCanvas, attach_spectrum_toolbar
 WINDOWS = ("exponential", "gaussian", "none")
 ZERO_FILLS = ("1", "2", "4", "8")
 PHASES = ("auto", "manual")
-REFERENCE_CHOICES = ("none", "TSP (0.00)", "DSS (0.00)", "water (4.70)",
-                     "DMSO (2.50)", "chloroform (7.26)", "manual shift")
-_REFERENCE_KEY = {"TSP (0.00)": "TSP", "DSS (0.00)": "DSS", "water (4.70)": "water",
-                  "DMSO (2.50)": "DMSO", "chloroform (7.26)": "chloroform"}
+ALL_EXPERIMENTS = "(all)"
+#: label -> standard key in nmr_io.SOLVENT_PPM
+REFERENCE_CHOICES = (("none", None), ("TSP (0.00)", "TSP"), ("DSS (0.00)", "DSS"),
+                     ("CHCl3 (7.26)", "CHCl3"), ("water (4.70)", "water"),
+                     ("DMSO (2.50)", "DMSO"), ("acetone (2.05)", "acetone"),
+                     ("formate (8.44)", "formate"), ("manual shift", "manual"))
+
+_MANUAL = "manual shift"
 
 
 class OWNMRImport(widget.OWWidget):
     name = "NMR Raw Import"
-    description = ("Import 1D NMR raw data (Bruker acqus/fid/fid, Varian/Agilent "
-                   "procpar/fid), process it (window, zero fill, FFT, phase, "
-                   "baseline, referencing) and emit a spectra table.")
+    description = ("Import 1D NMR raw data (Bruker, Varian/Agilent), pick one "
+                   "experiment, process it (window, zero fill, FFT, phase, "
+                   "baseline, referencing - also by dragging a signal) and emit "
+                   "a spectra table for multivariate analysis.")
     icon = "icons/NMRImport.svg"
     priority = 60
     keywords = ["nmr", "import", "bruker", "varian", "agilent", "fid", "raw",
-                "metabolomics", "preprocessing", "spectra"]
+                "metabolomics", "preprocessing", "spectra", "batch"]
 
     class Outputs:
         spectra = Output("Spectra", Table, default=True)
 
     class Information(widget.OWWidget.Information):
-        loaded = Msg("Imported {} dataset(s): {}")
+        loaded = Msg("Imported {} {} spectrum(s) from {}")
+        found_region = Msg("Strongest line in the marked region: {:.3f} ppm "
+                           "(now at {:.3f} ppm)")
 
     class Warning(widget.OWWidget.Warning):
         no_datasets = Msg("No NMR raw data found below that folder.")
         failed = Msg("{} dataset(s) could not be read: {}")
-        no_peak = Msg("No peak within {:.2f} ppm of the reference - axis unchanged.")
+        no_region_peak = Msg("No data inside the marked region ({:.2f} .. "
+                             "{:.2f} ppm).")
 
     # ------------------------------------------------------------- settings
     folder = Setting("")
     selected = Setting([])              # indices into self.datasets (listBox)
-    # NOTE: not `window` - that would shadow QWidget.window() and break Orange's
-    # status-bar layout with "'str' object is not callable".
-    apodization = Setting("exponential")
+    experiment = Setting(ALL_EXPERIMENTS)
+    window_apodization = Setting("exponential")
     lb_hz = Setting(0.3)
     zero = Setting("2")
-    skip = Setting(0)                   # 0 = automatic (68 for Varian, 0 Bruker)
+    skip = Setting(0)                   # 0 = automatic (68 Varian, 0 Bruker)
     phase = Setting("auto")
     p0 = Setting(0.0)
     p1 = Setting(0.0)
     baseline_order = Setting(0)
     reference = Setting("none")
     manual_shift = Setting(0.0)
+    region_lo = Setting(0.0)
+    region_hi = Setting(0.0)
+    region_active = Setting(False)
 
     want_main_area = True
     resizing_enabled = True
@@ -83,7 +97,9 @@ class OWNMRImport(widget.OWWidget):
     def __init__(self):
         super().__init__()
         self.datasets = []
-        self._spectra = []              # [(name, ppm, intensity)]
+        self._spectra = []              # [(name, sample, experiment, ppm, curve)]
+        self._reference_ppm = None      # the target of the chosen standard
+        self._found_ppm = None          # peak position used for referencing
         self.auto_commit = True
 
         box = gui.vBox(self.controlArea, "Source")
@@ -93,16 +109,23 @@ class OWNMRImport(widget.OWWidget):
         gui.button(box, self, "Rescan", callback=self._rescan)
         self.lbl_found = gui.label(box, self, "—")
 
+        ebox = gui.vBox(self.controlArea, "Experiment")
+        self.exp_combo = gui.comboBox(ebox, self, "experiment", items=[ALL_EXPERIMENTS],
+                                      label="Import: ", sendSelectedValue=True,
+                                      callback=self._process)
+        gui.label(ebox, self, "<i>One row per sample - what a multivariate "
+                              "analysis needs.</i>")
+
         dbox = gui.vBox(self.controlArea, "Datasets")
         self.list = gui.listBox(
             dbox, self, "selected",
             selectionMode=QAbstractItemView.SelectionMode.ExtendedSelection,
             callback=self._process)
-        self.list.setMinimumHeight(110)
+        self.list.setMinimumHeight(90)
 
         pbox = gui.vBox(self.controlArea, "Processing")
-        gui.comboBox(pbox, self, "apodization", items=WINDOWS, label="Window: ",
-                     sendSelectedValue=True, callback=self._process)
+        gui.comboBox(pbox, self, "window_apodization", items=WINDOWS,
+                     label="Window: ", sendSelectedValue=True, callback=self._process)
         gui.doubleSpin(pbox, self, "lb_hz", 0.0, 10.0, 0.05, label="LB (Hz): ",
                        decimals=2, callback=self._process)
         gui.comboBox(pbox, self, "zero", items=ZERO_FILLS, label="Zero fill: ",
@@ -122,19 +145,32 @@ class OWNMRImport(widget.OWWidget):
                  label="Baseline (order, 0 = off): ", callback=self._process)
 
         rbox = gui.vBox(self.controlArea, "Referencing")
-        gui.comboBox(rbox, self, "reference", items=REFERENCE_CHOICES,
+        gui.comboBox(rbox, self, "reference", items=[c[0] for c in REFERENCE_CHOICES],
                      label="Reference: ", sendSelectedValue=True,
                      callback=self._process)
         gui.doubleSpin(rbox, self, "manual_shift", -20.0, 20.0, 0.01,
                        label="Manual shift (ppm): ", decimals=3,
                        callback=self._process)
-        gui.label(rbox, self, "<i>Align a standard, or shift by hand.</i>")
+        gui.separator(rbox)
+        gui.label(rbox, self, "<b>Mark a signal with the mouse</b> (drag in the "
+                              "preview) and it becomes the reference:")
+        gui.checkBox(rbox, self, "region_active", "Use the marked region",
+                     callback=self._process)
+        gui.doubleSpin(rbox, self, "region_lo", -20.0, 30.0, 0.01,
+                       label="Region from (ppm): ", decimals=3,
+                       callback=self._region_typed)
+        gui.doubleSpin(rbox, self, "region_hi", -20.0, 30.0, 0.01,
+                       label="Region to (ppm): ", decimals=3,
+                       callback=self._region_typed)
+        gui.button(rbox, self, "Clear region", callback=self._clear_region)
+        self.lbl_region = gui.label(rbox, self, "no region marked")
 
         gui.rubber(self.controlArea)
         gui.auto_apply(self.buttonsArea, self, "auto_commit")
 
         pvbox = gui.vBox(self.mainArea, "Preview")
         self.preview_canvas = SpectrumCanvas((9, 3.4))
+        self.preview_canvas.on_region = self._region_dragged
         pvbox.layout().addWidget(self.preview_canvas)
         attach_spectrum_toolbar(pvbox, self.preview_canvas, self)
 
@@ -151,15 +187,31 @@ class OWNMRImport(widget.OWWidget):
         count = len(self.datasets)
         self.selected = [i for i in self.selected if 0 <= i < count] \
             or list(range(count))
+
+        experiments = []
+        for dataset in self.datasets:
+            name = nmr_io.describe(dataset)[1]
+            if name not in experiments:
+                experiments.append(name)
+        items = [ALL_EXPERIMENTS] + sorted(experiments)
+        self.exp_combo.blockSignals(True)
+        self.exp_combo.clear()
+        self.exp_combo.addItems(items)
+        wanted = self._experiment()
+        self.exp_combo.setCurrentIndex(items.index(wanted) if wanted in items else 0)
+        self.exp_combo.blockSignals(False)
+
         self.list.blockSignals(True)
         self.list.clear()
-        self.list.addItems([d.name for d in self.datasets])
+        self.list.addItems([f"{d.name}   [{nmr_io.describe(d)[1]}]"
+                            for d in self.datasets])
         for i in range(count):
             self.list.item(i).setSelected(i in self.selected)
         self.list.blockSignals(False)
+
         self.lbl_found.setText(f"{count} dataset(s) found" if count
                                else "no dataset found")
-        if not self.datasets:
+        if not count:
             self.Warning.no_datasets()
             self._spectra = []
             self.preview_canvas.draw_spectrum(None, None, None)
@@ -168,19 +220,65 @@ class OWNMRImport(widget.OWWidget):
         self.Warning.no_datasets.clear()
         self._process()
 
+    def _experiment(self):
+        """The chosen experiment name, or '' for all."""
+        value = self.experiment
+        if isinstance(value, int):                     # an older workflow
+            return "" if value in (0, -1) else str(value)
+        return "" if value in ("", ALL_EXPERIMENTS) else str(value)
+
     def _chosen(self):
-        """The ticked datasets (the list box stores row indices)."""
         indices = [i for i in self.selected if 0 <= i < len(self.datasets)]
         if not indices:
             indices = list(range(len(self.datasets)))
-        return [self.datasets[i] for i in indices]
+        chosen = [self.datasets[i] for i in indices]
+        wanted = self._experiment()
+        if wanted:
+            chosen = [d for d in chosen if nmr_io.describe(d)[1] == wanted]
+        return chosen
+
+    # ------------------------------------------------------------- region
+    def _region(self):
+        """(low, high) of the marked region, or None."""
+        if not self.region_active:
+            return None
+        lo, hi = float(self.region_lo), float(self.region_hi)
+        if abs(hi - lo) < 1e-6:
+            return None
+        return tuple(sorted((lo, hi)))
+
+    def _region_dragged(self, lo, hi):
+        """A drag in the preview marks the region and re-references at once."""
+        self.region_lo, self.region_hi = round(lo, 3), round(hi, 3)
+        self.region_active = True
+        self._process()
+
+    def _region_typed(self):
+        self.region_active = True
+        self._process()
+
+    def _clear_region(self):
+        self.region_active = False
+        self.region_lo = self.region_hi = 0.0
+        self._process()
 
     # ------------------------------------------------------------- processing
     def _zero_fill_factor(self):
         value = self.zero
-        if isinstance(value, int):                      # an older workflow
-            value = ZERO_FILLS[min(max(value, 0), len(ZERO_FILLS) - 1)]
+        if isinstance(value, int):
+            return (1, 2, 4, 8)[min(max(value, 0), 3)]
         return int(value) if str(value) in ZERO_FILLS else 2
+
+    def _standard(self):
+        """(label, standard key or None) for the chosen reference."""
+        choice = self.reference
+        if isinstance(choice, int):
+            choice = REFERENCE_CHOICES[min(max(choice, 0),
+                                           len(REFERENCE_CHOICES) - 1)][0]
+        for label, key in REFERENCE_CHOICES:
+            if label == choice:
+                return label, key
+        return "none", None
 
     def _process(self):
         chosen = self._chosen()
@@ -190,11 +288,18 @@ class OWNMRImport(widget.OWWidget):
             self.Outputs.spectra.send(None)
             return
 
-        self.Warning.no_peak.clear()
+        self.Warning.no_region_peak.clear()
+        _, standard = self._standard()
+        self._reference_ppm = (nmr_io.SOLVENT_PPM.get(standard)
+                               if standard and standard not in (None, "manual") else None)
+        self._found_ppm = None
+
         spectra, failed = [], []
         for dataset in chosen:
             try:
-                spectra.append(self._process_one(dataset))
+                sample, experiment = nmr_io.describe(dataset)
+                ppm, curve = self._process_one(dataset)
+                spectra.append((dataset.name, sample, experiment, ppm, curve))
             except Exception as exc:                    # keep the rest usable
                 failed.append(f"{dataset.name}: {exc}")
 
@@ -206,15 +311,24 @@ class OWNMRImport(widget.OWWidget):
             self.preview_canvas.draw_spectrum(None, None, None)
             self.Outputs.spectra.send(None)
             return
-        self.Information.loaded(len(spectra),
-                               ", ".join(name for name, _, _ in spectra[:3]))
-        name, ppm, curve = spectra[0]
+
+        experiment = self._experiment() or "all experiments"
+        self.Information.loaded(len(spectra), experiment, self.folder or "-")
+        if self._found_ppm is not None and self._reference_ppm is not None:
+            self.Information.found_region(self._found_ppm, self._reference_ppm)
+        name, _sample, _exp, ppm, curve = spectra[0]
         self.preview_canvas.draw_spectrum(ppm, curve, name,
-                                          reference_ppm=self._reference_ppm())
+                                          reference_ppm=self._reference_ppm,
+                                          region=self._region())
+        self.lbl_region.setText(
+            "no region marked" if self._region() is None else
+            f"region {self._region()[0]:.2f} .. {self._region()[1]:.2f} ppm"
+            + (f" - line at {self._found_ppm:.3f} ppm"
+               if self._found_ppm is not None else ""))
         self.commit.now() if self.auto_commit else self.commit.deferred()
 
     def _process_one(self, dataset):
-        """Read + process one dataset -> (name, ppm, intensity)."""
+        """Read + process one dataset -> (ppm, intensity)."""
         data, axis, meta = nmr_io.read_vendor(dataset, processed=True)
         if meta["domain"] == "frequency":               # Bruker pdata/1r: ready
             curve = np.real(data)
@@ -222,32 +336,31 @@ class OWNMRImport(widget.OWWidget):
             skip = self.skip or (68 if meta["vendor"] == "varian" else 0)
             axis, curve, _info = nmr_io.process_fid(
                 np.asarray(data)[skip:], meta,
-                lb_hz=self.lb_hz if self.apodization != "none" else 0.0,
-                window=self.apodization, zero=self._zero_fill_factor(),
+                lb_hz=self.lb_hz if self.window_apodization != "none" else 0.0,
+                window=self.window_apodization, zero=self._zero_fill_factor(),
                 phase=self.phase, p0=self.p0, p1=self.p1,
                 baseline_order=self.baseline_order)
             curve = np.real(curve)
-        axis = self._apply_reference(axis, curve)
-        return dataset.name, axis, curve
-
-    def _reference_ppm(self):
-        """The target ppm of the chosen standard, or None."""
-        choice = self.reference
-        if isinstance(choice, int):
-            choice = REFERENCE_CHOICES[min(max(choice, 0), len(REFERENCE_CHOICES) - 1)]
-        key = _REFERENCE_KEY.get(choice)
-        return nmr_io.SOLVENT_PPM.get(key) if key else None
+        return self._apply_reference(axis, curve), curve
 
     def _apply_reference(self, ppm, curve):
-        """Align a standard peak, or apply the manual shift."""
-        target = self._reference_ppm()
-        if target is not None:
-            ppm, delta = nmr_io.align_to_reference(ppm, curve, target)
-            if not delta:
-                self.Warning.no_peak(0.5)
-            return ppm
+        """Reference on the marked region, on the standard, or by hand."""
+        ppm = np.asarray(ppm, dtype=float)
+        region = self._region()
+        target = self._reference_ppm
+        if region is not None:
+            found = nmr_io.peak_in_region(ppm, curve, region)
+            if found is None:
+                self.Warning.no_region_peak(*region)
+            else:
+                self._found_ppm = found
+                if target is not None:
+                    ppm, _delta, _found = nmr_io.align_region(ppm, curve, region,
+                                                              target)
+        elif target is not None:
+            ppm, _delta = nmr_io.align_to_reference(ppm, curve, target)
         if abs(self.manual_shift) > 1e-9:
-            return np.asarray(ppm, dtype=float) + float(self.manual_shift)
+            ppm = ppm + float(self.manual_shift)
         return ppm
 
     # ------------------------------------------------------------- outputs
@@ -256,19 +369,22 @@ class OWNMRImport(widget.OWWidget):
         if not self._spectra:
             self.Outputs.spectra.send(None)
             return
-        ppm = np.asarray(self._spectra[0][1], dtype=float)
+        ppm = np.asarray(self._spectra[0][3], dtype=float)
         attrs = tuple(ContinuousVariable(f"{p:.4f}") for p in ppm)
-        dom = Domain(attrs, metas=[StringVariable("sample")])
-        rows = []
-        for _name, _ppm, curve in self._spectra:
+        dom = Domain(attrs, metas=[StringVariable("sample"),
+                                   StringVariable("experiment")])
+        rows, metas = [], []
+        for _name, sample, experiment, _ppm, curve in self._spectra:
             values = np.asarray(curve, dtype=float)
             if len(values) != len(ppm):                 # different FFT lengths
                 values = np.interp(np.linspace(0, 1, len(ppm)),
                                    np.linspace(0, 1, len(values)), values)
             rows.append(values)
-        metas = np.array([[name] for name, _, _ in self._spectra], dtype=object)
-        table = Table.from_numpy(dom, X=np.vstack(rows), metas=metas)
-        table.name = "NMR spectra"
+            metas.append([sample, experiment])
+        table = Table.from_numpy(dom, X=np.vstack(rows),
+                                 metas=np.array(metas, dtype=object))
+        experiment = self._experiment()
+        table.name = f"NMR spectra ({experiment})" if experiment else "NMR spectra"
         self.Outputs.spectra.send(table)
 
 

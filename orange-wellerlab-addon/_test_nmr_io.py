@@ -230,11 +230,76 @@ try:
         cols = np.array([float(a.name) for a in table.domain.attributes])
         check("widget table columns are ppm values",
               cols.max() > 10.0 and cols.min() < 0.0, f"{cols.max():.2f}..{cols.min():.2f}")
-        check("widget adds a sample meta",
-              [m.name for m in table.domain.metas] == ["sample"])
+        check("widget adds sample and experiment metas",
+              [m.name for m in table.domain.metas] == ["sample", "experiment"])
         got = peaks_in(cols, np.asarray(table.X[0], dtype=float))
         check("widget spectrum keeps the built-in peak positions",
               np.allclose(got, want, atol=0.02), f"{[round(v, 2) for v in got]}")
+
+    # --- experiment grouping and drag-region referencing --------------------
+    study = os.path.join(tmp, "study")
+    # shift every peak 0.20 ppm down, so the CHCl3-like line sits at 7.10
+    off = synthetic_fid() * np.exp(-2j * np.pi * 0.20 * OBS
+                                   * np.arange(N_COMPLEX) / SW)
+    for sample_name in ("P1", "P2"):
+        for experiment in ("PROTON_01", "PRESAT_01"):
+            write_varian(os.path.join(study, f"{sample_name}_{experiment}.fid"), off)
+    check("describe splits sample and experiment",
+          nmr_io.split_sample_experiment("P1_PROTON_01.fid") == ("P1", "PROTON_01"))
+    check("peak_in_region finds the line inside the window",
+          nmr_io.peak_in_region(np.array([6.0, 7.05, 7.15, 7.30, 8.0]),
+                                np.array([0.1, 0.2, 0.9, 1.0, 0.05]),
+                                (7.0, 7.4)) == 7.30)
+    check("peak_in_region returns None outside the data",
+          nmr_io.peak_in_region(np.array([1.0, 2.0]), np.array([1.0, 2.0]),
+                                (5.0, 6.0)) is None)
+
+    from wellerlab.nmr.widgets.ownmrimport import OWNMRImport
+    w2 = OWNMRImport()
+    sent2 = {}
+    w2.Outputs.spectra.send = lambda v: sent2.__setitem__("t", v)
+    w2.folder = study
+    w2._rescan()
+    app.processEvents()
+    check("experiment combo lists the experiments found",
+          [w2.exp_combo.itemText(i) for i in range(w2.exp_combo.count())]
+          == ["(all)", "PRESAT_01", "PROTON_01"],
+          f"{[w2.exp_combo.itemText(i) for i in range(w2.exp_combo.count())]}")
+    check("without a filter every dataset becomes a row",
+          len(sent2["t"]) == 4, f"{len(sent2['t'])}")
+
+    w2.experiment = "PROTON_01"
+    w2._process()
+    table2 = sent2["t"]
+    check("filtering by experiment gives one row per sample", len(table2) == 2,
+          f"{len(table2)} rows")
+    check("rows carry sample and experiment metas",
+          [m.name for m in table2.domain.metas] == ["sample", "experiment"]
+          and sorted(str(table2.metas[i, 0]) for i in range(len(table2)))
+          == ["P1", "P2"],
+          f"{[str(table2.metas[i, 0]) for i in range(len(table2))]}")
+    check("table name mentions the experiment",
+          "PROTON_01" in table2.name, table2.name)
+
+    # drag a region around the (deliberately 0.2 ppm offset) CHCl3 line
+    w2.reference = "CHCl3 (7.26)"
+    w2._region_dragged(6.95, 7.35)
+    app.processEvents()
+    table2 = sent2["t"]
+    cols = np.array([float(a.name) for a in table2.domain.attributes])
+    values = np.asarray(table2.X[0], dtype=float)
+    strongest = int(np.argmax(np.abs(values)))
+    check("drag-region referencing puts that line exactly on CHCl3",
+          abs(cols[strongest] - 7.26) < 0.01, f"{cols[strongest]:.3f} ppm")
+    check("the found line position is reported", w2._found_ppm is not None,
+          f"{w2._found_ppm}")
+    check("the reference line is the standard's ppm",
+          abs(w2._reference_ppm - 7.26) < 1e-9)
+    w2._clear_region()
+    check("clearing the region switches it off", w2._region() is None)
+    check("the preview canvas has the drag selection installed and wired",
+          w2.preview_canvas.has_span
+          and w2.preview_canvas.on_region == w2._region_dragged)
 
     # --- the real BASF/VnmrJ dataset (only when present) --------------------
     REAL = ("/Users/philippweller/Library/CloudStorage/Dropbox/AK Weller/Projekte/"
