@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <rect width="48" height="48" rx="8" fill="#1F4E79"/>
+  <g><line x1="10" y1="34" x2="38" y2="34" stroke="#fff" stroke-width="1.2" opacity="0.85"/><line x1="10" y1="34" x2="10" y2="12" stroke="#fff" stroke-width="1.2" opacity="0.85"/></g>
+  <g><circle cx="18" cy="27" r="2" fill="#fff"/><circle cx="24" cy="22" r="2" fill="#fff"/><circle cx="30" cy="17" r="2" fill="#fff"/></g>
+  <g><line x1="10" y1="34" x2="34" y2="14" stroke="#FFD54F" stroke-width="2" stroke-linecap="round"/><path d="M34 14 l-5 1.4 M34 14 l-1.4 5" stroke="#FFD54F" stroke-width="2" stroke-linecap="round"/></g>
+  <text x="24" y="45" font-family="Helvetica,Arial,sans-serif" font-size="7" fill="#fff"
+        fill-opacity="0.85" text-anchor="middle">BIP</text>
+</svg>

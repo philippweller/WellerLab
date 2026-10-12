@@ -66,6 +66,7 @@ class OWOPLSDA(OWBaseLearner):
         feature_values = Output("Feature Values", Table, explicit=True)
         biomarkers = Output("Selected Biomarkers", Table, explicit=True)
         selected_data = Output("Selected Data", Table, explicit=True)
+        scores = Output("Scores", Table, explicit=True)
 
     class Warning(OWBaseLearner.Warning):
         no_class = Msg("OPLS-DA needs a discrete class variable.")
@@ -321,13 +322,36 @@ class OWOPLSDA(OWBaseLearner):
         self.Outputs.selected_data.send(
             select_features(self.data, sorted(self._manual)))
         self.Outputs.feature_values.send(self._feature_values_table())
+        self.Outputs.scores.send(self._scores_table())
 
     # ------------------------------------------------------------- helpers
+    #: attribute prefixes that mark the score columns of this widget
+    SCORE_PREFIXES = ("t_pred", "t_o")
+
+    def _scores_table(self):
+        """Only the score columns (+ class and metas) - what a biplot wants.
+
+        "Data with Scores" carries the original features as well, which would
+        flood a component selector.
+        """
+        if self.data is None or self.model is None:
+            return None
+        aug = self._create_output_data()
+        if aug is None:
+            return None
+        columns = [a.name for a in aug.domain.attributes
+                   if a.name.startswith(self.SCORE_PREFIXES)]
+        if not columns:
+            return None
+        table = select_features(aug, columns)      # keeps class + metas
+        if table is not None:
+            table.name = "OPLS-DA scores"
+        return table
     def _clear_outputs(self):
         for o in (self.Outputs.data, self.Outputs.components,
                   self.Outputs.splot_data, self.Outputs.selected,
-                  self.Outputs.selected_data, self.Outputs.feature_values,
-                  self.Outputs.biomarkers):
+                  self.Outputs.selected_data, self.Outputs.scores,
+                  self.Outputs.feature_values, self.Outputs.biomarkers):
             o.send(None)
 
     def set_data(self, data):

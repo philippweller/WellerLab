@@ -49,7 +49,7 @@ ICONS = {
     "metabo": [("FeatureImport", "IMP"), ("Preprocess", "PRE"), ("FeatureFilter", "FIL"),
                ("UnivariateStats", "UNI"), ("Heatmap", "HM"), ("Volcano", "VOL")],
     "plsda": [("PLSDA", "PLS"), ("OPLSDA", "OPLS")],
-    "pca": [("PCAPro", "PRO")],
+    "pca": [("PCAPro", "PRO"), ("Biplot", "BIP")],
     "nmr": [("NMRImport", "IMP"), ("NMRBaseline", "BASE"), ("NMRBinning", "BIN"),
             ("NMRExclude", "EXCL"), ("NMRFilter", "FILT"), ("NMRNormalize", "NORM"),
             ("NMRReference", "REF")],

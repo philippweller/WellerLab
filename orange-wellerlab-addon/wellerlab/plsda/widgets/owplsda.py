@@ -19,6 +19,7 @@ from Orange.widgets.utils.widgetpreview import WidgetPreview
 from Orange.widgets.widget import Msg
 
 from wellerlab.plsda import PLSDALearner
+from ...selection import select_features
 
 
 class OWPLSDA(OWBaseLearner):
@@ -40,6 +41,11 @@ class OWPLSDA(OWBaseLearner):
         )
         components = Output(
             "Components",
+            Table,
+            explicit=True,
+        )
+        scores = Output(
+            "Scores",
             Table,
             explicit=True,
         )
@@ -91,13 +97,32 @@ class OWPLSDA(OWBaseLearner):
 
         data_with_scores = None
         components_table = None
+        scores_table = None
 
         if self.model is not None:
             data_with_scores = self._create_output_data()
             components_table = self._create_output_components()
+            scores_table = self._scores_table(data_with_scores)
 
         self.Outputs.data.send(data_with_scores)
         self.Outputs.components.send(components_table)
+        self.Outputs.scores.send(scores_table)
+
+    #: score columns of this widget (T1, T2, ... and U1, ...)
+    SCORE_PREFIXES = ("T", "U")
+
+    def _scores_table(self, aug):
+        """Only the score columns (+ class and metas) - what a biplot wants."""
+        if aug is None:
+            return None
+        columns = [a.name for a in aug.domain.attributes
+                   if a.name[:1] in self.SCORE_PREFIXES and a.name[1:].isdigit()]
+        if not columns:
+            return None
+        table = select_features(aug, columns)      # keeps class + metas
+        if table is not None:
+            table.name = "PLS-DA scores"
+        return table
 
     def _create_output_data(self):
         """Create a table with PLS scores, predicted classes, and probabilities.

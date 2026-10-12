@@ -18,7 +18,8 @@ sys.path.insert(0, HERE)
 from orange_python import find_orange_python, native     # noqa: E402  (shared helper)
 SUITES = ("_test_opls_core.py", "_test_owoplsda.py", "_test_suite.py",
           "_test_heatmap.py", "_test_volcano.py", "_test_selection.py",
-          "_test_pca.py", "_test_tableutils.py", "_test_nmr_io.py")
+          "_test_pca.py", "_test_tableutils.py", "_test_nmr_io.py",
+          "_test_biplot.py")
 
 
 def main():
