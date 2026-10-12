@@ -70,6 +70,12 @@ lines = [
     "--upgrade --no-deps wellerlab",
     "```",
     "",
+    "`--no-deps` on purpose: Orange already ships its dependencies, and a full "
+    "re-resolve can swap native arm64 wheels for x86_64 ones on Apple Silicon "
+    "(Orange then refuses to start). If pip reports 'No matching distribution' "
+    "for a brand-new version, the PyPI index is still catching up - retry, or add "
+    "`--no-cache-dir --index-url https://pypi.org/simple/`.",
+    "",
 ]
 for key, heading in FAMILIES:
     entries = sorted(buckets.get(key, []), key=lambda w: w.name)

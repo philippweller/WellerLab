@@ -16,12 +16,36 @@ Kategorie: **Weller Lab**.
 # aus dem Monorepo (empfohlen): findet Oranges eigenes Python
 python orange-install.py wellerlab
 
-# oder direkt
-/Applications/Orange.app/Contents/MacOS/python -m pip install wellerlab
+# oder direkt - ohne Versionsangabe, damit die neueste Version kommt
+/Applications/Orange.app/Contents/MacOS/python -m pip install --no-user --upgrade --no-deps wellerlab
 ```
 
+`--no-deps` ist Absicht: Orange bringt numpy/scipy/matplotlib/scikit-learn/pandas
+und sich selbst schon mit. Löst pip die Abhängigkeiten dagegen neu auf, kann es auf
+Apple Silicon die nativen arm64-Pakete gegen x86_64-Wheels tauschen - Orange startet
+danach nicht mehr. **Nie** `--force-reinstall` verwenden.
+
 Beim ersten Start danach erscheint die Kategorie **Weller Lab** mit allen
-Widgets. Wichtig: frühere Einzelpakete (`orangemetabo`, `orangeplsda`,
+Widgets.
+
+### Wenn pip die Version nicht findet
+
+`ERROR: No matching distribution found for wellerlab==<version>` direkt nach einem
+Release ist fast immer der **PyPI-Index-Lag**: die JSON-API kennt eine Version
+Minuten früher als der Simple-Index, den pip abfragt. Dann:
+
+```bash
+# ohne Pin installieren (holt die neueste sichtbare Version)
+/Applications/Orange.app/Contents/MacOS/python -m pip install --no-user --upgrade --no-deps wellerlab
+# hartnäckiger Fall: pip-Cache umgehen und direkt PyPI abfragen
+/Applications/Orange.app/Contents/MacOS/python -m pip install --no-cache-dir \
+    --index-url https://pypi.org/simple/ --no-user --upgrade --no-deps wellerlab
+# welchen Index benutzt pip überhaupt? (Spiegel/Proxy an der Uni!)
+/Applications/Orange.app/Contents/MacOS/python -m pip install -v wellerlab 2>&1 | grep -i "Looking in indexes"
+```
+
+Alternativ über die Oberfläche: *Options → Add-ons → Add more…* → `wellerlab`
+(der Dialog installiert die neueste Version von PyPI). Wichtig: frühere Einzelpakete (`orangemetabo`, `orangeplsda`,
 `orangepca`, `orangenmr`) müssen entfernt sein, sonst erscheinen die Widgets
 doppelt.
 
