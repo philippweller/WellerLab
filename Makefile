@@ -8,7 +8,7 @@
 PY ?= python3
 ADDON := orange-wellerlab-addon
 
-.PHONY: test install icons widgets dist clean
+.PHONY: test install icons widgets workflows dist clean
 
 test:                       ## run every test suite (headless, 6 suites)
 	$(MAKE) -C $(ADDON) test
@@ -21,6 +21,9 @@ icons:                      ## regenerate the shared icon set
 
 widgets:                    ## regenerate WIDGETS.md (widget overview)
 	$(MAKE) -C $(ADDON) widgets
+
+workflows:                  ## regenerate the example workflows (examples/*.ows)
+	$(MAKE) -C $(ADDON) workflows
 
 dist:                       ## build sdist + wheel
 	$(MAKE) -C $(ADDON) dist

@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='utf-8'?>
+<scheme version="2.0" title="Biplot from PCA" description="Feature table -&gt; preprocess -&gt; PCA -&gt; biplot, features selectable.">
+	<nodes>
+		<node id="0" name="Metabo Feature Table" qualified_name="wellerlab.metabo.widgets.owfeatureimport.OWFeatureImport" project_name="" version="" title="Metabo Feature Table" position="(60, 180)" />
+		<node id="1" name="Metabo Preprocess" qualified_name="wellerlab.metabo.widgets.owpreprocess.OWMetaboPreprocess" project_name="" version="" title="Metabo Preprocess" position="(320, 180)" />
+		<node id="2" name="PCA" qualified_name="Orange.widgets.unsupervised.owpca.OWPCA" project_name="Orange3" version="" title="PCA" position="(580, 120)" />
+		<node id="3" name="Biplot" qualified_name="wellerlab.pca.widgets.owbiplot.OWBiplot" project_name="" version="" title="Biplot" position="(860, 100)" />
+	</nodes>
+	<links>
+		<link id="0" source_node_id="0" sink_node_id="1" source_channel="Feature Data" sink_channel="Feature Data" enabled="true" source_channel_id="data" sink_channel_id="data" />
+		<link id="1" source_node_id="1" sink_node_id="2" source_channel="Preprocessed Data" sink_channel="Data" enabled="true" source_channel_id="data" sink_channel_id="data" />
+		<link id="2" source_node_id="1" sink_node_id="3" source_channel="Preprocessed Data" sink_channel="Data" enabled="true" source_channel_id="data" sink_channel_id="data" />
+		<link id="3" source_node_id="2" sink_node_id="3" source_channel="Transformed Data" sink_channel="Scores" enabled="true" source_channel_id="transformed_data" sink_channel_id="scores" />
+		<link id="4" source_node_id="2" sink_node_id="3" source_channel="Components" sink_channel="Loadings" enabled="true" source_channel_id="components" sink_channel_id="loadings" />
+	</links>
+	<annotations>
+		<text id="0" type="text/plain" rect="(60, 330, 1000, 120)">Biplot: 'Data' = the (preprocessed) feature table, 'Scores' and 'Loadings' come from the model widget.
+PCA: Transformed Data -&gt; Scores, Components -&gt; Loadings.
+OPLS-DA: set 'Predictive components' to 2 or more.
+Then zoom (wheel), drag a region to reference, click / shift-click / lasso the arrows to select features,
+and send 'Selected Data' on to a Data Table, Heatmap or Volcano.</text>
+	</annotations>
+	<thumbnail />
+	<node_properties />
+	<session_state>
+		<window_groups />
+	</session_state>
+</scheme>

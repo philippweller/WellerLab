@@ -153,8 +153,11 @@ class OWMetaboPreprocess(widget.OWWidget):
         dom = Domain(list(self.data.domain.attributes),
                      self.data.domain.class_vars,
                      self.data.domain.metas)
+        # Y must be passed along: the domain declares the class variables, and
+        # from_numpy otherwise raises "Invalid number of class columns (0 != 1)"
         out = Table.from_numpy(
             dom, X=X_sf,
+            Y=self.data.Y if self.data.domain.class_vars else None,
             metas=self.data.metas if self.data.domain.metas else None)
         out.name = "preprocessed"
         self.Outputs.data.send(out)

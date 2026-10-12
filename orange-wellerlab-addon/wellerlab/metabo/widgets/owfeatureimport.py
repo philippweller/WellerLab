@@ -40,10 +40,12 @@ class OWFeatureImport(widget.OWWidget):
 
     # settings
     use_group_meta = Setting(True)
+    #: persisted, so a saved workflow remembers which table it belongs to -
+    #: without this, opening a workflow always asks for the file again
+    file_path = Setting("")
 
     def __init__(self):
         super().__init__()
-        self.file_path = ""
         self._feat = []
         self._samples = []
         self._groups = []
@@ -56,6 +58,8 @@ class OWFeatureImport(widget.OWWidget):
                      "Include group as meta column",
                      callback=self._reload)
         gui.rubber(self.controlArea)
+        if self.file_path:                       # a workflow brought one along
+            self._load()
 
     # ------------------------------------------------------------------ file
     def _browse(self):

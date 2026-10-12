@@ -106,6 +106,12 @@ lines += [
     "",
     "The NMR widgets expect 1D spectra (ppm columns) and, for Peak Finding / "
     "Calibration / Peak Match, an R installation with the Rnmr1D package.",
+    "",
+    "## Example workflows",
+    "",
+    "`examples/biplot_pca.ows` and `examples/biplot_oplsda.ows` open in Orange "
+    "(File -> Open) and show the Biplot wiring - feature table -> preprocess -> "
+    "PCA resp. OPLS-DA -> Biplot. Regenerate them with `make workflows`.",
 ]
 
 with open(OUT, "w", encoding="utf-8") as fh:
