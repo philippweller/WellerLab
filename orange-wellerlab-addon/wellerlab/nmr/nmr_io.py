@@ -30,7 +30,8 @@ __all__ = [
     "Dataset", "find_datasets", "read_vendor", "read_procpar", "read_acqus",
  "apodize", "zero_fill", "auto_phase", "phase_correct", "poly_baseline",
  "process_fid", "ppm_axis", "align_to_reference", "peak_in_region",
- "align_region", "split_sample_experiment", "describe", "SOLVENT_PPM",
+ "align_region", "find_reference_peak", "split_sample_experiment", "describe",
+ "AUTO_REFERENCE_ORDER", "SOLVENT_PPM",
  ]
 
 #: common referencing standards (ppm)
@@ -453,6 +454,38 @@ def align_region(ppm, spectrum, region, target_ppm):
         return np.asarray(ppm, dtype=float), 0.0, None
     delta = float(found - float(target_ppm))
     return np.asarray(ppm, dtype=float) - delta, delta, found
+
+
+#: order in which the automatic referencing looks for a standard
+AUTO_REFERENCE_ORDER = ("TMS", "CHCl3")
+
+
+def find_reference_peak(ppm, spectrum, order=AUTO_REFERENCE_ORDER, window=0.5,
+                        min_rel=0.03):
+    """The first standard in `order` that has a clear peak near its own ppm.
+
+    "Clear" means at least `min_rel` of the strongest line, so noise is not
+    mistaken for a reference. Returns ``(standard_key, target_ppm, found_ppm)``,
+    or three Nones when nothing usable is in the windows.
+
+    Caveat: with a generous `window` the search can lock onto an unrelated line
+    that happens to sit near 0 ppm (silicone grease at 0.07, for instance), which
+    is why the window is a setting rather than a constant.
+    """
+    ppm = np.asarray(ppm, dtype=float)
+    values = np.abs(np.asarray(spectrum, dtype=float))
+    if values.size == 0 or not np.isfinite(values).any() or values.max() <= 0:
+        return None, None, None
+    for key in order:
+        target = SOLVENT_PPM.get(key)
+        if target is None:
+            continue
+        mask = (ppm >= target - window) & (ppm <= target + window)
+        if not mask.any() or values[mask].max() < min_rel * values.max():
+            continue
+        return key, float(target), peak_in_region(ppm, values,
+                                                  (target - window, target + window))
+    return None, None, None
 
 
 def split_sample_experiment(name):

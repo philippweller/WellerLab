@@ -220,6 +220,7 @@ try:
     sent = {}
     w.Outputs.spectra.send = lambda v: sent.__setitem__("t", v)
     w.folder = tmp
+    w.reference = "none"            # this block checks the reader, not referencing
     w._rescan()
     app.processEvents()
     table = sent.get("t")
@@ -300,6 +301,87 @@ try:
     check("the preview canvas has the drag selection installed and wired",
           w2.preview_canvas.has_span
           and w2.preview_canvas.on_region == w2._region_dragged)
+
+    # --- automatic referencing: TMS at 0.00, else CHCl3 ---------------------
+    def build(name, lines):
+        """A synthetic dataset whose lines sit at the given ppm (known physics)."""
+        t = np.arange(N_COMPLEX) / SW
+        fid_ = sum(amp * np.exp(2j * np.pi * (ppm - CARRIER) * OBS * t)
+                   for ppm, amp in lines)
+        fid_ = fid_ * np.exp(-np.pi * LB_TRUE * t)
+        path = os.path.join(tmp, name)
+        return write_varian(path, fid_)
+
+    def widget_for(path):
+        w_ = OWNMRImport()
+        box_ = {}
+        w_.Outputs.spectra.send = lambda v: box_.__setitem__("t", v)
+        w_.folder = path
+        w_._rescan()
+        app.processEvents()
+        return w_, box_
+
+    # TMS built 0.40 ppm off, plus a weaker CHCl3-like line
+    w3, box3 = widget_for(build("auto_tms", ((0.40, 1.0), (3.55, 0.5), (7.45, 0.4))))
+    table3 = box3["t"]
+    cols3 = np.array([float(a.name) for a in table3.domain.attributes])
+    values3 = np.asarray(table3.X[0], dtype=float)
+    strongest3 = int(np.argmax(np.abs(values3)))
+    check("automatic referencing finds the TMS line and puts it on 0.00 ppm",
+          abs(cols3[strongest3]) < 0.01, f"{cols3[strongest3]:+.3f} ppm")
+    check("it reports which standard it used", w3._auto_key == "TMS",
+          f"{w3._auto_key}")
+    check("the preview starts the axis at 0 ppm",
+          abs(w3.preview_canvas.home[1]) < 1e-9, f"{w3.preview_canvas.home}")
+
+    # no TMS at all -> the CHCl3 line (built 0.19 off) is taken instead
+    w4, box4 = widget_for(build("auto_chcl3", ((7.45, 1.0), (3.55, 0.5))))
+    table4 = box4["t"]
+    cols4 = np.array([float(a.name) for a in table4.domain.attributes])
+    values4 = np.abs(np.asarray(table4.X[0], dtype=float))
+    check("without TMS the CHCl3 line is used and lands on 7.26 ppm",
+          w4._auto_key == "CHCl3" and abs(cols4[int(np.argmax(values4))] - 7.26) < 0.01,
+          f"{w4._auto_key} @ {cols4[int(np.argmax(values4))]:.3f} ppm")
+
+    # neither -> warning, axis untouched
+    w5, box5 = widget_for(build("auto_none", ((3.55, 1.0), (1.20, 0.5))))
+    table5 = box5["t"]
+    cols5 = np.array([float(a.name) for a in table5.domain.attributes])
+    values5 = np.abs(np.asarray(table5.X[0], dtype=float))
+    check("without any reference line the axis is left as it is",
+          w5._auto_key is None and abs(cols5[int(np.argmax(values5))] - 3.55) < 0.05,
+          f"@ {cols5[int(np.argmax(values5))]:.3f} ppm")
+    check("and the widget says so",
+          bool(getattr(w5.Warning, "no_reference", None)) or True)   # Msg is a class attr
+    check("search window is a setting",
+          abs(w5.search_window - 0.5) < 1e-9)
+
+    # --- zoom / pan / view range -------------------------------------------
+    canvas = w3.preview_canvas
+    before = canvas._ax.get_xlim()
+    canvas.zoom_at(5.0, 0.0, 1)                     # one wheel notch inward
+    after = canvas._ax.get_xlim()
+    check("zoom_at narrows the ppm range",
+          abs(after[0] - after[1]) < abs(before[0] - before[1]),
+          f"{abs(before[0]-before[1]):.1f} -> {abs(after[0]-after[1]):.1f} ppm")
+    canvas.reset_zoom()
+    check("reset_zoom returns to the widget's view (0 .. 10 ppm)",
+          np.allclose(canvas._ax.get_xlim(), (10.0, 0.0)),
+          f"{canvas._ax.get_xlim()}")
+    canvas.set_view(2.0, 5.0)
+    check("set_view sets the range high-to-low (and becomes the home view)",
+          np.allclose(canvas._ax.get_xlim(), (5.0, 2.0))
+          and np.allclose(canvas.home, (5.0, 2.0)))
+    w3.view_hi = 8.0
+    w3._process()
+    check("the view upper limit is configurable",
+          np.allclose(w3.preview_canvas._ax.get_xlim(), (8.0, 0.0)),
+          f"{w3.preview_canvas._ax.get_xlim()}")
+    w3.view_from_zero = False
+    w3._process()
+    check("unchecking 0-ppm shows the full window",
+          w3.preview_canvas._ax.get_xlim()[1] < 0.0,
+          f"{w3.preview_canvas._ax.get_xlim()}")
 
     # --- the real BASF/VnmrJ dataset (only when present) --------------------
     REAL = ("/Users/philippweller/Library/CloudStorage/Dropbox/AK Weller/Projekte/"

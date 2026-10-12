@@ -39,10 +39,15 @@ ZERO_FILLS = ("1", "2", "4", "8")
 PHASES = ("auto", "manual")
 ALL_EXPERIMENTS = "(all)"
 #: label -> standard key in nmr_io.SOLVENT_PPM
-REFERENCE_CHOICES = (("none", None), ("TSP (0.00)", "TSP"), ("DSS (0.00)", "DSS"),
-                     ("CHCl3 (7.26)", "CHCl3"), ("water (4.70)", "water"),
-                     ("DMSO (2.50)", "DMSO"), ("acetone (2.05)", "acetone"),
-                     ("formate (8.44)", "formate"), ("manual shift", "manual"))
+REFERENCE_CHOICES = (("none", None),
+                     ("auto: TMS (0.00), else CHCl3 (7.26)", "auto"),
+                     ("TMS (0.00)", "TMS"), ("DSS (0.00)", "DSS"),
+                     ("CHCl3 (7.26)", "CHCl3"), ("CHCl3 (7.24)", "CHCl3_724"),
+                     ("water (4.70)", "water"), ("DMSO (2.50)", "DMSO"),
+                     ("acetone (2.05)", "acetone"), ("formate (8.44)", "formate"),
+                     ("manual shift", "manual"))
+#: ppm for the extra CHCl3 entry (the value the user asked for)
+CHCL3_724_PPM = 7.24
 
 _MANUAL = "manual shift"
 
@@ -65,12 +70,16 @@ class OWNMRImport(widget.OWWidget):
         loaded = Msg("Imported {} {} spectrum(s) from {}")
         found_region = Msg("Strongest line in the marked region: {:.3f} ppm "
                            "(now at {:.3f} ppm)")
+        referenced_on = Msg("Automatically referenced on {} at {:.3f} ppm")
 
     class Warning(widget.OWWidget.Warning):
         no_datasets = Msg("No NMR raw data found below that folder.")
         failed = Msg("{} dataset(s) could not be read: {}")
         no_region_peak = Msg("No data inside the marked region ({:.2f} .. "
                              "{:.2f} ppm).")
+        no_reference = Msg("No TMS (0.00) or CHCl3 line within +/-{:.2f} ppm - "
+                           "the axis was left as it is. Mark the signal with the "
+                           "mouse instead.")
 
     # ------------------------------------------------------------- settings
     folder = Setting("")
@@ -84,8 +93,11 @@ class OWNMRImport(widget.OWWidget):
     p0 = Setting(0.0)
     p1 = Setting(0.0)
     baseline_order = Setting(0)
-    reference = Setting("none")
+    reference = Setting("auto: TMS (0.00), else CHCl3 (7.26)")
     manual_shift = Setting(0.0)
+    search_window = Setting(0.5)        # ppm window of the automatic peak search
+    view_from_zero = Setting(True)      # x axis starts at 0 ppm
+    view_hi = Setting(10.0)             # ... and ends here
     region_lo = Setting(0.0)
     region_hi = Setting(0.0)
     region_active = Setting(False)
@@ -100,6 +112,7 @@ class OWNMRImport(widget.OWWidget):
         self._spectra = []              # [(name, sample, experiment, ppm, curve)]
         self._reference_ppm = None      # the target of the chosen standard
         self._found_ppm = None          # peak position used for referencing
+        self._auto_key = None           # standard the automatic search picked
         self.auto_commit = True
 
         box = gui.vBox(self.controlArea, "Source")
@@ -163,7 +176,22 @@ class OWNMRImport(widget.OWWidget):
                        label="Region to (ppm): ", decimals=3,
                        callback=self._region_typed)
         gui.button(rbox, self, "Clear region", callback=self._clear_region)
+        gui.doubleSpin(rbox, self, "search_window", 0.05, 2.0, 0.05,
+                       label="Search window (± ppm): ", decimals=2,
+                       callback=self._process,
+                       tooltip="Half width of the automatic search around TMS "
+                               "(0.00) and CHCl3 (7.26). Wider covers a "
+                               "referencing offset, but can catch an unrelated "
+                               "line (e.g. grease at 0.07 ppm).")
         self.lbl_region = gui.label(rbox, self, "no region marked")
+
+        vbox = gui.vBox(self.controlArea, "View")
+        gui.checkBox(vbox, self, "view_from_zero", "x axis starts at 0 ppm",
+                     callback=self._process)
+        gui.doubleSpin(vbox, self, "view_hi", 1.0, 30.0, 0.5, label="… up to (ppm): ",
+                       decimals=1, callback=self._process)
+        gui.button(vbox, self, "Reset zoom", callback=self._reset_zoom)
+        gui.label(vbox, self, "<i>Wheel = zoom, right drag = pan.</i>")
 
         gui.rubber(self.controlArea)
         gui.auto_apply(self.buttonsArea, self, "auto_commit")
@@ -280,6 +308,15 @@ class OWNMRImport(widget.OWWidget):
                 return label, key
         return "none", None
 
+    def _standard_ppm(self, key):
+        """The ppm of a standard key (the 7.24 variant is not in SOLVENT_PPM)."""
+        if key == "CHCl3_724":
+            return CHCL3_724_PPM
+        return nmr_io.SOLVENT_PPM.get(key)
+
+    def _reset_zoom(self):
+        self.preview_canvas.reset_zoom()
+
     def _process(self):
         chosen = self._chosen()
         if not chosen:
@@ -290,9 +327,11 @@ class OWNMRImport(widget.OWWidget):
 
         self.Warning.no_region_peak.clear()
         _, standard = self._standard()
-        self._reference_ppm = (nmr_io.SOLVENT_PPM.get(standard)
-                               if standard and standard not in (None, "manual") else None)
+        self._reference_ppm = (self._standard_ppm(standard)
+                               if standard not in (None, "manual", "auto") else None)
         self._found_ppm = None
+        self._auto_key = None
+        self.Warning.no_reference.clear()
 
         spectra, failed = [], []
         for dataset in chosen:
@@ -316,10 +355,13 @@ class OWNMRImport(widget.OWWidget):
         self.Information.loaded(len(spectra), experiment, self.folder or "-")
         if self._found_ppm is not None and self._reference_ppm is not None:
             self.Information.found_region(self._found_ppm, self._reference_ppm)
+        if self._auto_key is not None:
+            self.Information.referenced_on(self._auto_key, self._reference_ppm)
         name, _sample, _exp, ppm, curve = spectra[0]
-        self.preview_canvas.draw_spectrum(ppm, curve, name,
-                                          reference_ppm=self._reference_ppm,
-                                          region=self._region())
+        self.preview_canvas.draw_spectrum(
+            ppm, curve, name, reference_ppm=self._reference_ppm,
+            region=self._region(),
+            view=(0.0, float(self.view_hi)) if self.view_from_zero else None)
         self.lbl_region.setText(
             "no region marked" if self._region() is None else
             f"region {self._region()[0]:.2f} .. {self._region()[1]:.2f} ppm"
@@ -344,21 +386,42 @@ class OWNMRImport(widget.OWWidget):
         return self._apply_reference(axis, curve), curve
 
     def _apply_reference(self, ppm, curve):
-        """Reference on the marked region, on the standard, or by hand."""
+        """Reference on the marked region, on the standard, or automatically."""
         ppm = np.asarray(ppm, dtype=float)
         region = self._region()
         target = self._reference_ppm
+        _, standard = self._standard()
+        window = float(self.search_window)
+
         if region is not None:
             found = nmr_io.peak_in_region(ppm, curve, region)
             if found is None:
                 self.Warning.no_region_peak(*region)
             else:
                 self._found_ppm = found
+                if target is None and standard == "auto":
+                    # the marked signal tells us which standard it is about
+                    key = "TMS" if abs(found) <= abs(found - CHCL3_724_PPM) else "CHCl3"
+                    target = self._standard_ppm(key)
+                    self._reference_ppm = target
+                    self._auto_key = key
                 if target is not None:
                     ppm, _delta, _found = nmr_io.align_region(ppm, curve, region,
                                                               target)
+        elif standard == "auto":
+            key, target, found = nmr_io.find_reference_peak(ppm, curve,
+                                                            window=window)
+            if key is None:
+                self.Warning.no_reference(window)
+            else:
+                self._reference_ppm = target
+                self._auto_key = key
+                self._found_ppm = found
+                ppm, _delta = nmr_io.align_to_reference(ppm, curve, target,
+                                                        window=window)
         elif target is not None:
-            ppm, _delta = nmr_io.align_to_reference(ppm, curve, target)
+            ppm, _delta = nmr_io.align_to_reference(ppm, curve, target,
+                                                    window=window)
         if abs(self.manual_shift) > 1e-9:
             ppm = ppm + float(self.manual_shift)
         return ppm
